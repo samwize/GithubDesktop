@@ -2341,7 +2341,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /** Load the initial state for the app. */
-  public async loadInitialState() {
+  public async loadInitialState(initialRepositoryPath: string | null) {
     const [accounts, repositories] = await Promise.all([
       this.accountsStore.getAll(),
       this.repositoriesStore.getAll(),
@@ -2357,7 +2357,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.accounts = accounts
     this.repositories = repositories
 
-    this.updateRepositorySelectionAfterRepositoriesChanged()
+    this.updateRepositorySelectionAfterRepositoriesChanged(
+      initialRepositoryPath
+    )
 
     this.sidebarWidth = constrain(
       getNumber(sidebarWidthConfigKey, defaultSidebarWidth)
@@ -2852,7 +2854,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
     })
   }
 
-  private updateRepositorySelectionAfterRepositoriesChanged() {
+  private updateRepositorySelectionAfterRepositoriesChanged(
+    initialRepositoryPath: string | null = null
+  ) {
     const selectedRepository = this.selectedRepository
     let newSelectedRepository: Repository | CloningRepository | null =
       this.selectedRepository
@@ -2868,8 +2872,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     if (newSelectedRepository === null && this.repositories.length > 0) {
+      if (initialRepositoryPath !== null) {
+        newSelectedRepository =
+          this.repositories.find(r => r.path === initialRepositoryPath) || null
+      }
+
       const lastSelectedID = getNumber(LastSelectedRepositoryIDKey, 0)
-      if (lastSelectedID > 0) {
+      if (newSelectedRepository === null && lastSelectedID > 0) {
         newSelectedRepository =
           this.repositories.find(r => r.id === lastSelectedID) || null
       }

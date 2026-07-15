@@ -57,6 +57,11 @@ import {
 import parseCommandLineArgs from 'minimist'
 import { CLIAction } from '../lib/cli-action'
 import { IRepositoryIndicatorUpdate } from '../lib/ipc-shared'
+import { pathExists } from '../lib/path-exists'
+import {
+  readWindowRepositoryPaths,
+  writeWindowRepositoryPaths,
+} from './window-repository-state'
 
 app.setAppLogsPath()
 enableSourceMaps()
@@ -70,6 +75,7 @@ let backgroundServicesOwnerID: number | null = null
 const launchTime = now()
 
 let preventQuit = false
+let isQuitting = false
 let readyTime: number | null = null
 
 type OnDidLoadFn = (window: AppWindow) => void
@@ -143,6 +149,11 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
+  writeWindowRepositoryPaths(
+    app.getPath('userData'),
+    getActiveRepositoryPaths()
+  )
   for (const window of windows.values()) {
     window.markWillQuit()
   }
@@ -443,7 +454,7 @@ if (process.env.GITHUB_DESKTOP_DISABLE_HARDWARE_ACCELERATION) {
   app.disableHardwareAcceleration()
 }
 
-app.on('ready', () => {
+app.on('ready', async () => {
   if (isDuplicateInstance || handlingSquirrelEvent) {
     return
   }
@@ -452,7 +463,24 @@ app.on('ready', () => {
 
   possibleProtocols.forEach(protocol => setAsDefaultProtocolClient(protocol))
 
-  createWindow()
+  const storedRepositoryPaths = readWindowRepositoryPaths(
+    app.getPath('userData')
+  )
+  const restoredRepositoryPaths = (
+    await Promise.all(
+      storedRepositoryPaths.map(async path =>
+        (await pathExists(path)) ? path : null
+      )
+    )
+  ).filter((path): path is string => path !== null)
+
+  if (restoredRepositoryPaths.length === 0) {
+    createWindow()
+  } else {
+    for (const path of restoredRepositoryPaths) {
+      createWindow(path)
+    }
+  }
 
   const orderedWebRequest = new OrderedWebRequest(
     session.defaultSession.webRequest
@@ -489,6 +517,10 @@ app.on('ready', () => {
     }
 
     selectedRepositoryPaths.set(window.id, path)
+    writeWindowRepositoryPaths(
+      app.getPath('userData'),
+      getActiveRepositoryPaths()
+    )
     sendOwnerState()
   })
 
@@ -546,6 +578,7 @@ app.on('ready', () => {
   })
 
   ipcMain.on('cancel-quitting', event => {
+    isQuitting = false
     for (const window of windows.values()) {
       window.cancelQuitting()
     }
@@ -968,11 +1001,15 @@ app.on(
 
 let installedDevTools = false
 
-function createWindow() {
+function createWindow(initialRepositoryPath: string | null = null) {
   const restoreWindowState = windows.size === 0
-  const window = new AppWindow(restoreWindowState, () => windows.size === 1)
+  const window = new AppWindow(
+    restoreWindowState,
+    () => windows.size === 1,
+    initialRepositoryPath
+  )
   windows.set(window.id, window)
-  selectedRepositoryPaths.set(window.id, null)
+  selectedRepositoryPaths.set(window.id, initialRepositoryPath)
   mainWindow = window
 
   if (__DEV__ && !installedDevTools) {
@@ -1002,6 +1039,12 @@ function createWindow() {
     const wasBackgroundServicesOwner = backgroundServicesOwnerID === window.id
     windows.delete(window.id)
     selectedRepositoryPaths.delete(window.id)
+    if (!isQuitting) {
+      writeWindowRepositoryPaths(
+        app.getPath('userData'),
+        getActiveRepositoryPaths()
+      )
+    }
     if (mainWindow === window) {
       mainWindow = getTargetWindow() ?? null
     }

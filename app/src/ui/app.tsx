@@ -272,7 +272,7 @@ export class App extends React.Component<IAppProps, IAppState> {
   private statsIntervalHandle?: number
   private deferredLaunchActionsReady = false
   private backgroundServicesActive = false
-  private selectedRepositoryPath: string | null = null
+  private selectedRepositoryPath: string | null | undefined
 
   private repositoryViewRef = React.createRef<RepositoryView>()
 
@@ -296,7 +296,11 @@ export class App extends React.Component<IAppProps, IAppState> {
   public constructor(props: IAppProps) {
     super(props)
 
-    props.dispatcher.loadInitialState().then(() => {
+    const initialRepositoryPath = new URLSearchParams(
+      window.location.hash.slice(1)
+    ).get('repository')
+
+    props.dispatcher.loadInitialState(initialRepositoryPath).then(() => {
       this.loading = false
       this.forceUpdate()
 

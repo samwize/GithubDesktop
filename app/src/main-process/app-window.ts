@@ -45,7 +45,8 @@ export class AppWindow {
 
   public constructor(
     restoreWindowState: boolean,
-    private readonly shouldHideOnClose: () => boolean
+    private readonly shouldHideOnClose: () => boolean,
+    private readonly initialRepositoryPath: string | null
   ) {
     const savedWindowState = windowStateKeeper({
       defaultWidth: this.minWidth,
@@ -201,9 +202,12 @@ export class AppWindow {
     // formatting defaults. This is a bit of a hack but it avoids the need to
     // have an IPC round trip to get that information from the main process.
     const localeCountryCode = app.getLocaleCountryCode() ?? ''
+    const parameters = new URLSearchParams({ lc: localeCountryCode })
+    if (this.initialRepositoryPath !== null) {
+      parameters.set('repository', this.initialRepositoryPath)
+    }
     this.window.loadURL(
-      encodePathAsUrl(__dirname, 'index.html') +
-        `#lc=${encodeURIComponent(localeCountryCode)}`
+      `${encodePathAsUrl(__dirname, 'index.html')}#${parameters.toString()}`
     )
 
     const onNativeThemeUpdated = () => {
