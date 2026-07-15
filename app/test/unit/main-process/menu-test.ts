@@ -186,7 +186,10 @@ describe('main-process menu', () => {
         .flatMap(item => (Array.isArray(item.submenu) ? item.submenu : []))
         .find(item => item.id === 'new-window')
 
-      assert.equal(newWindowItem?.accelerator, 'CmdOrCtrl+Shift+N')
+      assert.equal(
+        newWindowItem?.accelerator,
+        __DARWIN__ ? 'Cmd+Ctrl+N' : 'Ctrl+Alt+N'
+      )
     })
 
     it('has no duplicate access keys for any combination of label-affecting parameters', () => {

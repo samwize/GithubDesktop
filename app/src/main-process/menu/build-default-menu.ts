@@ -69,10 +69,10 @@ export function buildDefaultMenuTemplate({
 
   if (__DARWIN__) {
     template.push({
-      label: 'GitHub Desktop',
+      label: 'GitPub',
       submenu: [
         {
-          label: 'About GitHub Desktop',
+          label: 'About GitPub',
           click: emit('show-about'),
           id: 'about',
         },
@@ -111,7 +111,7 @@ export function buildDefaultMenuTemplate({
         label: __DARWIN__ ? 'New Window' : 'New &window',
         id: 'new-window',
         click: emit('new-window'),
-        accelerator: 'CmdOrCtrl+Shift+N',
+        accelerator: __DARWIN__ ? 'Cmd+Ctrl+N' : 'Ctrl+Alt+N',
       },
       separator,
       {
@@ -608,7 +608,7 @@ export function buildDefaultMenuTemplate({
         ...helpItems,
         separator,
         {
-          label: '&About GitHub Desktop',
+          label: '&About GitPub',
           click: emit('show-about'),
           id: 'about',
         },
