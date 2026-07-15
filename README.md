@@ -1,4 +1,25 @@
-# [GitHub Desktop](https://desktop.github.com)
+# GithubDesktop
+
+GithubDesktop is an unofficial fork of
+[GitHub Desktop](https://github.com/desktop/desktop) focused on making
+concurrent work across many repositories practical.
+
+## What's different?
+
+This fork adds native multi-window support. Open **File → New Window** or press
+<kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>, then select a repository
+independently in each window.
+
+All windows run inside one Electron process. Shared background work, including
+API polling, Alive notifications, updates, statistics, Git LFS setup, and
+repository indicator refreshes, is owned by one window to avoid duplicated
+network activity. Repository lists and shared settings stay synchronized
+across windows.
+
+This is a personal, experimental fork. It isn't affiliated with or supported
+by GitHub, Inc.
+
+## Upstream project
 
 [GitHub Desktop](https://desktop.github.com/) is an open-source [Electron](https://www.electronjs.org/)-based
 GitHub app. It is written in [TypeScript](https://www.typescriptlang.org) and
@@ -16,7 +37,11 @@ uses [React](https://reactjs.org/).
   />
 </picture>
 
-## Where can I get it?
+## Where can I get upstream GitHub Desktop?
+
+This fork doesn't publish installers yet. The links below install the official
+upstream GitHub Desktop application and don't include this fork's multi-window
+changes.
 
 Download the official installer for your operating system:
 
