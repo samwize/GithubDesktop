@@ -108,6 +108,13 @@ export function buildDefaultMenuTemplate({
     label: __DARWIN__ ? 'File' : '&File',
     submenu: [
       {
+        label: __DARWIN__ ? 'New Window' : 'New &window',
+        id: 'new-window',
+        click: emit('new-window'),
+        accelerator: 'CmdOrCtrl+Shift+N',
+      },
+      separator,
+      {
         label: __DARWIN__ ? 'New Repository…' : 'New &repository…',
         id: 'new-repository',
         click: emit('create-repository'),

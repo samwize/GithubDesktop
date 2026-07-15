@@ -54,7 +54,10 @@ export class RepositoriesStore extends TypedBaseStore<
 
   private emitQueued = false
 
-  public constructor(private readonly db: RepositoriesDatabase) {
+  public constructor(
+    private readonly db: RepositoriesDatabase,
+    private readonly onDidWrite?: () => void
+  ) {
     super()
   }
 
@@ -787,12 +790,21 @@ export class RepositoriesStore extends TypedBaseStore<
     if (!this.emitQueued) {
       setImmediate(() => {
         this.getAll()
-          .then(repos => this.emitUpdate(repos))
+          .then(repos => {
+            this.emitUpdate(repos)
+            this.onDidWrite?.()
+          })
           .catch(e => log.error(`Failed emitting update`, e))
           .finally(() => (this.emitQueued = false))
       })
       this.emitQueued = true
     }
+  }
+
+  public reload() {
+    return this.getAll()
+      .then(repos => this.emitUpdate(repos))
+      .catch(e => log.error(`Failed reloading repositories`, e))
   }
 }
 

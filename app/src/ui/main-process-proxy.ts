@@ -73,6 +73,28 @@ export const updateMenuState = sendProxy('update-menu-state', 1)
 /** Tell the main process that the renderer is ready. */
 export const sendReady = sendProxy('renderer-ready', 1)
 
+export const createNewWindow = sendProxy('create-new-window', 0)
+
+export const setSelectedRepositoryPath = sendProxy(
+  'selected-repository-path-changed',
+  1
+)
+
+export const notifyRepositoriesStoreChanged = sendProxy(
+  'repositories-store-changed',
+  0
+)
+
+export const notifyNotificationsSettingsChanged = sendProxy(
+  'notifications-settings-changed',
+  0
+)
+
+export const sendRepositoryIndicatorUpdate = sendProxy(
+  'repository-indicator-changed',
+  1
+)
+
 /** Tell the main process to execute (i.e. simulate a click of) the menu item. */
 export const executeMenuItem = (item: ExecutableMenuItem) =>
   executeMenuItemById(item.id)
