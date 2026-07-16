@@ -76,6 +76,8 @@ export type RequestChannels = {
   focus: () => void
   blur: () => void
   'update-accounts': (accounts: ReadonlyArray<EndpointToken>) => void
+  'accounts-store-changed': () => void
+  'reload-accounts': () => void
   'quit-and-install-updates': () => void
   'quit-app': () => void
   'minimize-window': () => void
@@ -105,6 +107,8 @@ export type RequestChannels = {
   'reload-repositories': () => void
   'notifications-settings-changed': () => void
   'reload-notifications-settings': () => void
+  'confirmation-preferences-changed': () => void
+  'reload-confirmation-preferences': () => void
   'repository-indicator-changed': (update: IRepositoryIndicatorUpdate) => void
   'apply-repository-indicator': (update: IRepositoryIndicatorUpdate) => void
 }

@@ -72,7 +72,11 @@ export class AccountsStore extends TypedBaseStore<ReadonlyArray<Account>> {
   /** A promise that will resolve when the accounts have been loaded. */
   private loadingPromise: Promise<void>
 
-  public constructor(dataStore: IDataStore, secureStore: ISecureStore) {
+  public constructor(
+    dataStore: IDataStore,
+    secureStore: ISecureStore,
+    private readonly onDidWrite?: () => void
+  ) {
     super()
 
     this.dataStore = dataStore
@@ -87,6 +91,12 @@ export class AccountsStore extends TypedBaseStore<ReadonlyArray<Account>> {
     await this.loadingPromise
 
     return this.accounts.slice()
+  }
+
+  public async reload(): Promise<void> {
+    await this.loadingPromise
+    this.loadingPromise = this.loadFromStore(true)
+    await this.loadingPromise
   }
 
   /**
@@ -205,9 +215,13 @@ export class AccountsStore extends TypedBaseStore<ReadonlyArray<Account>> {
   /**
    * Load the users into memory from storage.
    */
-  private async loadFromStore(): Promise<void> {
+  private async loadFromStore(emitEmpty = false): Promise<void> {
     const raw = this.dataStore.getItem('users')
     if (!raw || !raw.length) {
+      this.accounts = []
+      if (emitEmpty) {
+        this.emitUpdate(this.accounts)
+      }
       return
     }
 
@@ -255,6 +269,7 @@ export class AccountsStore extends TypedBaseStore<ReadonlyArray<Account>> {
     this.dataStore.setItem('users', JSON.stringify(usersWithoutTokens))
 
     this.emitUpdate(this.accounts)
+    this.onDidWrite?.()
   }
 }
 

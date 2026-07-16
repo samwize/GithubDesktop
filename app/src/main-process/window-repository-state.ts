@@ -14,12 +14,8 @@ export function readWindowRepositoryPaths(
       return []
     }
 
-    return Array.from(
-      new Set(
-        value.filter(
-          (path): path is string => typeof path === 'string' && path.length > 0
-        )
-      )
+    return value.filter(
+      (path): path is string => typeof path === 'string' && path.length > 0
     )
   } catch {
     return []
@@ -30,9 +26,5 @@ export function writeWindowRepositoryPaths(
   userDataPath: string,
   paths: ReadonlyArray<string>
 ) {
-  writeFileSync(
-    join(userDataPath, FileName),
-    JSON.stringify(Array.from(new Set(paths))),
-    'utf8'
-  )
+  writeFileSync(join(userDataPath, FileName), JSON.stringify(paths), 'utf8')
 }

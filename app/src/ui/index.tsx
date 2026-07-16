@@ -46,6 +46,7 @@ import {
 import { shellNeedsPatching, updateEnvironmentForProcess } from '../lib/shell'
 import { installDevGlobals } from './install-globals'
 import {
+  notifyAccountsStoreChanged,
   notifyRepositoriesStoreChanged,
   reportUncaughtException,
   sendErrorReport,
@@ -259,7 +260,11 @@ const statsStore = new StatsStore(
   new UiActivityMonitor()
 )
 
-const accountsStore = new AccountsStore(localStorage, TokenStore)
+const accountsStore = new AccountsStore(
+  localStorage,
+  TokenStore,
+  notifyAccountsStoreChanged
+)
 
 const signInStore = new SignInStore(accountsStore)
 
@@ -344,8 +349,16 @@ ipcRenderer.on('reload-repositories', () => {
   repositoriesStore.reload()
 })
 
+ipcRenderer.on('reload-accounts', () => {
+  accountsStore.reload().catch(e => log.error('Failed reloading accounts', e))
+})
+
 ipcRenderer.on('reload-notifications-settings', () => {
   appStore._reloadNotificationsSettings()
+})
+
+ipcRenderer.on('reload-confirmation-preferences', () => {
+  appStore._reloadConfirmationPreferences()
 })
 
 ipcRenderer.on('apply-repository-indicator', (_, update) => {

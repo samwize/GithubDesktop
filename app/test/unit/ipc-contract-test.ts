@@ -49,6 +49,8 @@ describe('IPC channel contract', () => {
     'focus',
     'blur',
     'update-accounts',
+    'accounts-store-changed',
+    'reload-accounts',
     'quit-and-install-updates',
     'quit-app',
     'minimize-window',
@@ -78,6 +80,8 @@ describe('IPC channel contract', () => {
     'reload-repositories',
     'notifications-settings-changed',
     'reload-notifications-settings',
+    'confirmation-preferences-changed',
+    'reload-confirmation-preferences',
     'repository-indicator-changed',
     'apply-repository-indicator',
   ] as const

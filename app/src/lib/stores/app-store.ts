@@ -118,6 +118,7 @@ import {
   sendCancelQuittingSync,
   showOpenDialog,
   sendRepositoryIndicatorUpdate,
+  notifyConfirmationPreferencesChanged,
   notifyNotificationsSettingsChanged,
 } from '../../ui/main-process-proxy'
 import { IRepositoryIndicatorUpdate } from '../ipc-shared'
@@ -4156,10 +4157,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   private broadcastRepositoryIndicator(repositoryID: number) {
-    if (!this.backgroundServicesActive) {
-      return
-    }
-
     sendRepositoryIndicatorUpdate({
       repositoryID,
       state: this.localRepositoryStateLookup.get(repositoryID) ?? null,
@@ -4310,6 +4307,42 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   public _reloadNotificationsSettings() {
     this.notificationsStore.reloadNotificationsEnabled()
+    this.emitUpdate()
+  }
+
+  public _reloadConfirmationPreferences() {
+    const confirmRepositoryRemoval = getBoolean(
+      confirmRepoRemovalKey,
+      confirmRepoRemovalDefault
+    )
+    const confirmDiscardChanges = getBoolean(
+      confirmDiscardChangesKey,
+      confirmDiscardChangesDefault
+    )
+    const confirmDiscardChangesPermanently = getBoolean(
+      confirmDiscardChangesPermanentlyKey,
+      confirmDiscardChangesPermanentlyDefault
+    )
+    const confirmForcePush = getBoolean(
+      confirmForcePushKey,
+      askForConfirmationOnForcePushDefault
+    )
+
+    if (
+      this.askForConfirmationOnRepositoryRemoval === confirmRepositoryRemoval &&
+      this.confirmDiscardChanges === confirmDiscardChanges &&
+      this.confirmDiscardChangesPermanently ===
+        confirmDiscardChangesPermanently &&
+      this.askForConfirmationOnForcePush === confirmForcePush
+    ) {
+      return
+    }
+
+    this.askForConfirmationOnRepositoryRemoval = confirmRepositoryRemoval
+    this.confirmDiscardChanges = confirmDiscardChanges
+    this.confirmDiscardChangesPermanently = confirmDiscardChangesPermanently
+    this.askForConfirmationOnForcePush = confirmForcePush
+    this.updateMenuLabelsForSelectedRepository()
     this.emitUpdate()
   }
 
@@ -7598,8 +7631,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public _setConfirmRepositoryRemovalSetting(
     confirmRepoRemoval: boolean
   ): Promise<void> {
+    if (this.askForConfirmationOnRepositoryRemoval === confirmRepoRemoval) {
+      return Promise.resolve()
+    }
+
     this.askForConfirmationOnRepositoryRemoval = confirmRepoRemoval
     setBoolean(confirmRepoRemovalKey, confirmRepoRemoval)
+    notifyConfirmationPreferencesChanged()
 
     this.updateMenuLabelsForSelectedRepository()
 
@@ -7609,9 +7647,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   public _setConfirmDiscardChangesSetting(value: boolean): Promise<void> {
+    if (this.confirmDiscardChanges === value) {
+      return Promise.resolve()
+    }
+
     this.confirmDiscardChanges = value
 
     setBoolean(confirmDiscardChangesKey, value)
+    notifyConfirmationPreferencesChanged()
     this.emitUpdate()
 
     return Promise.resolve()
@@ -7620,9 +7663,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public _setConfirmDiscardChangesPermanentlySetting(
     value: boolean
   ): Promise<void> {
+    if (this.confirmDiscardChangesPermanently === value) {
+      return Promise.resolve()
+    }
+
     this.confirmDiscardChangesPermanently = value
 
     setBoolean(confirmDiscardChangesPermanentlyKey, value)
+    notifyConfirmationPreferencesChanged()
     this.emitUpdate()
 
     return Promise.resolve()
@@ -7647,8 +7695,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   public _setConfirmForcePushSetting(value: boolean): Promise<void> {
+    if (this.askForConfirmationOnForcePush === value) {
+      return Promise.resolve()
+    }
+
     this.askForConfirmationOnForcePush = value
     setBoolean(confirmForcePushKey, value)
+    notifyConfirmationPreferencesChanged()
 
     this.updateMenuLabelsForSelectedRepository()
 

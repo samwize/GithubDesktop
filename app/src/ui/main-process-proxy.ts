@@ -85,8 +85,15 @@ export const notifyRepositoriesStoreChanged = sendProxy(
   0
 )
 
+export const notifyAccountsStoreChanged = sendProxy('accounts-store-changed', 0)
+
 export const notifyNotificationsSettingsChanged = sendProxy(
   'notifications-settings-changed',
+  0
+)
+
+export const notifyConfirmationPreferencesChanged = sendProxy(
+  'confirmation-preferences-changed',
   0
 )
 

@@ -18,12 +18,16 @@ describe('window repository state', () => {
     }
   })
 
-  it('round trips unique repository paths', () => {
+  it('preserves one repository path per window', () => {
     directory = mkdtempSync(join(tmpdir(), 'window-repositories-'))
 
     writeWindowRepositoryPaths(directory, ['/one', '/two', '/one'])
 
-    assert.deepEqual(readWindowRepositoryPaths(directory), ['/one', '/two'])
+    assert.deepEqual(readWindowRepositoryPaths(directory), [
+      '/one',
+      '/two',
+      '/one',
+    ])
   })
 
   it('ignores invalid stored values', () => {

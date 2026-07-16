@@ -227,12 +227,8 @@ function sendAppMenuToAllWindows() {
 }
 
 function getActiveRepositoryPaths() {
-  return Array.from(
-    new Set(
-      Array.from(selectedRepositoryPaths.values()).filter(
-        (path): path is string => path !== null
-      )
-    )
+  return Array.from(selectedRepositoryPaths.values()).filter(
+    (path): path is string => path !== null
   )
 }
 
@@ -532,6 +528,14 @@ app.on('ready', async () => {
     }
   })
 
+  ipcMain.on('accounts-store-changed', event => {
+    for (const window of windows.values()) {
+      if (window.webContents !== event.sender) {
+        ipcWebContents.send(window.webContents, 'reload-accounts')
+      }
+    }
+  })
+
   ipcMain.on('notifications-settings-changed', event => {
     for (const window of windows.values()) {
       if (window.webContents !== event.sender) {
@@ -540,9 +544,20 @@ app.on('ready', async () => {
     }
   })
 
+  ipcMain.on('confirmation-preferences-changed', event => {
+    for (const window of windows.values()) {
+      if (window.webContents !== event.sender) {
+        ipcWebContents.send(
+          window.webContents,
+          'reload-confirmation-preferences'
+        )
+      }
+    }
+  })
+
   ipcMain.on('repository-indicator-changed', (event, update) => {
-    const owner = getWindowForSender(event.sender)
-    if (owner?.id !== backgroundServicesOwnerID) {
+    const source = getWindowForSender(event.sender)
+    if (source === undefined) {
       return
     }
 
@@ -553,7 +568,7 @@ app.on('ready', async () => {
     }
 
     for (const window of windows.values()) {
-      if (window.id !== backgroundServicesOwnerID) {
+      if (window.id !== source.id) {
         ipcWebContents.send(
           window.webContents,
           'apply-repository-indicator',
@@ -585,7 +600,12 @@ app.on('ready', async () => {
     event.returnValue = true
   })
 
-  ipcMain.on('update-preferred-app-menu-item-labels', (_, labels) => {
+  ipcMain.on('update-preferred-app-menu-item-labels', (event, labels) => {
+    const senderWindow = getWindowForSender(event.sender)
+    if (senderWindow === undefined || !senderWindow.isFocused()) {
+      return
+    }
+
     // The current application menu is mutable and we frequently
     // change whether particular items are enabled or not through
     // the update-menu-state IPC event. This menu that we're creating
@@ -798,12 +818,13 @@ app.on('ready', async () => {
     getWindowForSender(event.sender)?.sendAppMenu()
   )
 
-  ipcMain.on('show-certificate-trust-dialog', (_, certificate, message) => {
+  ipcMain.on('show-certificate-trust-dialog', (event, certificate, message) => {
     // This API is only implemented for macOS and Windows right now.
     if (__DARWIN__ || __WIN32__) {
-      onDidLoad(window => {
-        window.showCertificateTrustDialog(certificate, message)
-      })
+      getWindowForSender(event.sender)?.showCertificateTrustDialog(
+        certificate,
+        message
+      )
     }
   })
 
