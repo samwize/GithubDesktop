@@ -28,6 +28,29 @@ describe('RepositoriesStore', () => {
       const repositories = await repositoriesStore.getAll()
       assert.equal(repositories[0].path, repoPath)
     })
+
+    it('notifies other windows after a write but not a reload', async () => {
+      let notifyWrite: () => void = () => {}
+      const writeNotified = new Promise<void>(resolve => {
+        notifyWrite = resolve
+      })
+      let writeCount = 0
+      repositoriesStore = new RepositoriesStore(repoDb, () => {
+        writeCount++
+        notifyWrite()
+      })
+
+      await repositoriesStore.reload()
+      assert.equal(writeCount, 0)
+
+      await repositoriesStore.addRepository(
+        '/some/cool/path',
+        '/some/cool/path/.git'
+      )
+      await writeNotified
+
+      assert.equal(writeCount, 1)
+    })
   })
 
   describe('getting all repositories', () => {

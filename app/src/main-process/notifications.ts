@@ -3,7 +3,7 @@ import {
   onNotificationEvent,
   terminateNotifications,
 } from 'desktop-notifications'
-import { BrowserWindow } from 'electron'
+import { WebContents } from 'electron'
 import { findToastActivatorClsid } from '../lib/find-toast-activator-clsid'
 import { DesktopAliveEvent } from '../lib/stores/alive-store'
 import * as ipcWebContents from './ipc-webcontents'
@@ -45,14 +45,15 @@ export function terminateDesktopNotifications() {
   terminateNotifications()
 }
 
-export function installNotificationCallback(window: BrowserWindow) {
+export function installNotificationCallback(
+  getWebContents: () => WebContents | null
+) {
   onNotificationEvent<DesktopAliveEvent>((event, id, userInfo) => {
-    ipcWebContents.send(
-      window.webContents,
-      'notification-event',
-      event,
-      id,
-      userInfo
-    )
+    const webContents = getWebContents()
+    if (webContents === null) {
+      return
+    }
+
+    ipcWebContents.send(webContents, 'notification-event', event, id, userInfo)
   })
 }

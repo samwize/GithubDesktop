@@ -168,8 +168,8 @@ export class Dispatcher {
   }
 
   /** Load the initial state for the app. */
-  public loadInitialState(): Promise<void> {
-    return this.appStore.loadInitialState()
+  public loadInitialState(initialRepositoryPath: string | null): Promise<void> {
+    return this.appStore.loadInitialState(initialRepositoryPath)
   }
 
   /**

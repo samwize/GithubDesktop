@@ -180,6 +180,18 @@ describe('main-process menu', () => {
       askForConfirmationOnRepositoryRemoval: false,
     }
 
+    it('includes the new window command', () => {
+      const template = buildDefaultMenuTemplate(baseParams)
+      const newWindowItem = template
+        .flatMap(item => (Array.isArray(item.submenu) ? item.submenu : []))
+        .find(item => item.id === 'new-window')
+
+      assert.equal(
+        newWindowItem?.accelerator,
+        __DARWIN__ ? 'Cmd+Ctrl+N' : 'Ctrl+Alt+N'
+      )
+    })
+
     it('has no duplicate access keys for any combination of label-affecting parameters', () => {
       const combinationCount = 1 << variantKeys.length
 

@@ -66,6 +66,8 @@ import {
   selectAllWindowContents,
   installWindowsCLI,
   uninstallWindowsCLI,
+  createNewWindow,
+  setSelectedRepositoryPath,
 } from './main-process-proxy'
 import { DiscardChanges } from './discard-changes'
 import { Welcome } from './welcome'
@@ -267,6 +269,10 @@ export class App extends React.Component<IAppProps, IAppState> {
   private lastKeyPressed: string | null = null
 
   private updateIntervalHandle?: number
+  private statsIntervalHandle?: number
+  private deferredLaunchActionsReady = false
+  private backgroundServicesActive = false
+  private selectedRepositoryPath: string | null | undefined
 
   private repositoryViewRef = React.createRef<RepositoryView>()
 
@@ -290,7 +296,11 @@ export class App extends React.Component<IAppProps, IAppState> {
   public constructor(props: IAppProps) {
     super(props)
 
-    props.dispatcher.loadInitialState().then(() => {
+    const initialRepositoryPath = new URLSearchParams(
+      window.location.hash.slice(1)
+    ).get('repository')
+
+    props.dispatcher.loadInitialState(initialRepositoryPath).then(() => {
       this.loading = false
       this.forceUpdate()
 
@@ -309,6 +319,14 @@ export class App extends React.Component<IAppProps, IAppState> {
 
     this.state = props.appStore.getState()
     props.appStore.onDidUpdate(state => {
+      const selectedRepositoryPath =
+        state.selectedState?.type === SelectionType.Repository
+          ? state.selectedState.repository.path
+          : null
+      if (this.selectedRepositoryPath !== selectedRepositoryPath) {
+        this.selectedRepositoryPath = selectedRepositoryPath
+        setSelectedRepositoryPath(selectedRepositoryPath)
+      }
       this.setState(state)
     })
 
@@ -317,6 +335,18 @@ export class App extends React.Component<IAppProps, IAppState> {
     })
 
     ipcRenderer.on('menu-event', (_, name) => this.onMenuEvent(name))
+    ipcRenderer.on('background-services-active', (_, active) => {
+      this.backgroundServicesActive = active
+      if (!this.deferredLaunchActionsReady) {
+        return
+      }
+
+      if (active) {
+        this.startBackgroundServices()
+      } else {
+        this.stopBackgroundServices()
+      }
+    })
 
     updateStore.onDidChange(async state => {
       const status = state.status
@@ -366,7 +396,7 @@ export class App extends React.Component<IAppProps, IAppState> {
   }
 
   public componentWillUnmount() {
-    window.clearInterval(this.updateIntervalHandle)
+    this.stopBackgroundServices()
 
     if (__DARWIN__) {
       window.removeEventListener('keydown', this.onMacOSWindowKeyDown)
@@ -378,19 +408,11 @@ export class App extends React.Component<IAppProps, IAppState> {
     // the app. So defer it until we have some breathing space.
     this.props.appStore.loadEmoji()
 
-    this.props.dispatcher.reportStats()
-    setInterval(() => this.props.dispatcher.reportStats(), SendStatsInterval)
-
-    this.props.dispatcher.installGlobalLFSFilters(false)
-
-    // We only want to automatically check for updates on beta and prod
     if (
-      __RELEASE_CHANNEL__ !== 'development' &&
-      __RELEASE_CHANNEL__ !== 'test'
+      (__RELEASE_CHANNEL__ === 'development' ||
+        __RELEASE_CHANNEL__ === 'test') &&
+      (await updateStore.isUpdateShowcase())
     ) {
-      setInterval(() => this.checkForUpdates(true), UpdateCheckInterval)
-      this.checkForUpdates(true)
-    } else if (await updateStore.isUpdateShowcase()) {
       // The only purpose of this call is so we can see the showcase on dev/test
       // env. Prod and beta environment will trigger this during automatic check
       // for updates.
@@ -400,7 +422,37 @@ export class App extends React.Component<IAppProps, IAppState> {
     log.info(`launching: ${getVersion()} (${getOS()})`)
     log.info(`execPath: '${process.execPath}'`)
 
-    // Only show the popup in beta/production releases and mac machines
+    this.setOnOpenBanner()
+    this.deferredLaunchActionsReady = true
+    if (this.backgroundServicesActive) {
+      await this.startBackgroundServices()
+    }
+  }
+
+  private async startBackgroundServices() {
+    if (this.statsIntervalHandle !== undefined) {
+      return
+    }
+
+    this.props.dispatcher.reportStats()
+    this.statsIntervalHandle = window.setInterval(
+      () => this.props.dispatcher.reportStats(),
+      SendStatsInterval
+    )
+
+    this.props.dispatcher.installGlobalLFSFilters(false)
+
+    if (
+      __RELEASE_CHANNEL__ !== 'development' &&
+      __RELEASE_CHANNEL__ !== 'test'
+    ) {
+      this.updateIntervalHandle = window.setInterval(
+        () => this.checkForUpdates(true),
+        UpdateCheckInterval
+      )
+      this.checkForUpdates(true)
+    }
+
     if (
       __DEV__ === false &&
       this.state.askToMoveToApplicationsFolderSetting &&
@@ -409,8 +461,13 @@ export class App extends React.Component<IAppProps, IAppState> {
     ) {
       this.showPopup({ type: PopupType.MoveToApplicationsFolder })
     }
+  }
 
-    this.setOnOpenBanner()
+  private stopBackgroundServices() {
+    window.clearInterval(this.statsIntervalHandle)
+    window.clearInterval(this.updateIntervalHandle)
+    this.statsIntervalHandle = undefined
+    this.updateIntervalHandle = undefined
   }
 
   /**
@@ -445,6 +502,8 @@ export class App extends React.Component<IAppProps, IAppState> {
     }
 
     switch (name) {
+      case 'new-window':
+        return createNewWindow()
       case 'push':
         return this.push()
       case 'force-push':

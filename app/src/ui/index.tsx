@@ -45,7 +45,12 @@ import {
 } from '../lib/databases'
 import { shellNeedsPatching, updateEnvironmentForProcess } from '../lib/shell'
 import { installDevGlobals } from './install-globals'
-import { reportUncaughtException, sendErrorReport } from './main-process-proxy'
+import {
+  notifyAccountsStoreChanged,
+  notifyRepositoriesStoreChanged,
+  reportUncaughtException,
+  sendErrorReport,
+} from './main-process-proxy'
 import { getOS } from '../lib/get-os'
 import {
   enableSourceMaps,
@@ -255,7 +260,11 @@ const statsStore = new StatsStore(
   new UiActivityMonitor()
 )
 
-const accountsStore = new AccountsStore(localStorage, TokenStore)
+const accountsStore = new AccountsStore(
+  localStorage,
+  TokenStore,
+  notifyAccountsStoreChanged
+)
 
 const signInStore = new SignInStore(accountsStore)
 
@@ -270,7 +279,8 @@ trampolineServer.registerCommandHandler(
 )
 
 const repositoriesStore = new RepositoriesStore(
-  new RepositoriesDatabase('Database')
+  new RepositoriesDatabase('Database'),
+  notifyRepositoriesStoreChanged
 )
 
 const pullRequestStore = new PullRequestStore(
@@ -321,6 +331,39 @@ const appStore = new AppStore(
   notificationsStore,
   copilotStore
 )
+
+ipcRenderer.on('background-services-active', (_, active) => {
+  appStore._setBackgroundServicesActive(active)
+  notificationsStore.setBackgroundServicesActive(active)
+})
+
+ipcRenderer.on('application-focus-changed', (_, focused) => {
+  appStore._setApplicationFocusState(focused)
+})
+
+ipcRenderer.on('active-repository-paths-changed', (_, paths) => {
+  appStore._setActiveRepositoryPaths(paths)
+})
+
+ipcRenderer.on('reload-repositories', () => {
+  repositoriesStore.reload()
+})
+
+ipcRenderer.on('reload-accounts', () => {
+  accountsStore.reload().catch(e => log.error('Failed reloading accounts', e))
+})
+
+ipcRenderer.on('reload-notifications-settings', () => {
+  appStore._reloadNotificationsSettings()
+})
+
+ipcRenderer.on('reload-confirmation-preferences', () => {
+  appStore._reloadConfirmationPreferences()
+})
+
+ipcRenderer.on('apply-repository-indicator', (_, update) => {
+  appStore._applyRepositoryIndicator(update)
+})
 
 appStore.onDidUpdate(state => {
   currentState = state

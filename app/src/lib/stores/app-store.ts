@@ -117,7 +117,11 @@ import {
   quitApp,
   sendCancelQuittingSync,
   showOpenDialog,
+  sendRepositoryIndicatorUpdate,
+  notifyConfirmationPreferencesChanged,
+  notifyNotificationsSettingsChanged,
 } from '../../ui/main-process-proxy'
+import { IRepositoryIndicatorUpdate } from '../ipc-shared'
 import {
   API,
   getAccountForEndpoint,
@@ -566,6 +570,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private currentBranchPruner: BranchPruner | null = null
 
   private readonly repositoryIndicatorUpdater: RepositoryIndicatorUpdater
+  private backgroundServicesActive = false
+  private applicationIsFocused = false
+  private activeRepositoryPaths = new Set<string>()
 
   private showWelcomeFlow = false
   private focusCommitMessage = false
@@ -790,7 +797,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     )
 
     window.setTimeout(() => {
-      if (this.repositoryIndicatorsEnabled) {
+      if (this.shouldRunRepositoryIndicatorUpdater) {
         this.repositoryIndicatorUpdater.start()
       }
     }, InitialRepositoryIndicatorTimeout)
@@ -2335,7 +2342,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /** Load the initial state for the app. */
-  public async loadInitialState() {
+  public async loadInitialState(initialRepositoryPath: string | null) {
     const [accounts, repositories] = await Promise.all([
       this.accountsStore.getAll(),
       this.repositoriesStore.getAll(),
@@ -2351,7 +2358,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.accounts = accounts
     this.repositories = repositories
 
-    this.updateRepositorySelectionAfterRepositoriesChanged()
+    this.updateRepositorySelectionAfterRepositoriesChanged(
+      initialRepositoryPath
+    )
 
     this.sidebarWidth = constrain(
       getNumber(sidebarWidthConfigKey, defaultSidebarWidth)
@@ -2846,7 +2855,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
     })
   }
 
-  private updateRepositorySelectionAfterRepositoriesChanged() {
+  private updateRepositorySelectionAfterRepositoriesChanged(
+    initialRepositoryPath: string | null = null
+  ) {
     const selectedRepository = this.selectedRepository
     let newSelectedRepository: Repository | CloningRepository | null =
       this.selectedRepository
@@ -2862,8 +2873,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     if (newSelectedRepository === null && this.repositories.length > 0) {
+      if (initialRepositoryPath !== null) {
+        newSelectedRepository =
+          this.repositories.find(r => r.path === initialRepositoryPath) || null
+      }
+
       const lastSelectedID = getNumber(LastSelectedRepositoryIDKey, 0)
-      if (lastSelectedID > 0) {
+      if (newSelectedRepository === null && lastSelectedID > 0) {
         newSelectedRepository =
           this.repositories.find(r => r.id === lastSelectedID) || null
       }
@@ -4093,12 +4109,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     if (repository.missing) {
       lookup.delete(repository.id)
+      this.emitUpdate()
+      this.broadcastRepositoryIndicator(repository.id)
       return
     }
 
     const exists = await pathExists(repository.path)
     if (!exists) {
       lookup.delete(repository.id)
+      this.emitUpdate()
+      this.broadcastRepositoryIndicator(repository.id)
       return
     }
 
@@ -4106,11 +4126,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const status = await gitStore.loadStatus()
     if (status === null) {
       lookup.delete(repository.id)
+      this.emitUpdate()
+      this.broadcastRepositoryIndicator(repository.id)
       return
     }
 
     this.updateSidebarIndicator(repository, status)
     this.emitUpdate()
+    this.broadcastRepositoryIndicator(repository.id)
 
     const lastPush = await inferLastPushForRepository(
       this.accounts,
@@ -4129,7 +4152,15 @@ export class AppStore extends TypedBaseStore<IAppState> {
         changedFilesCount: existing?.changedFilesCount ?? 0,
       })
       this.emitUpdate()
+      this.broadcastRepositoryIndicator(repository.id)
     }
+  }
+
+  private broadcastRepositoryIndicator(repositoryID: number) {
+    sendRepositoryIndicatorUpdate({
+      repositoryID,
+      state: this.localRepositoryStateLookup.get(repositoryID) ?? null,
+    })
   }
 
   private getRepositoriesForIndicatorRefresh = () => {
@@ -4141,7 +4172,65 @@ export class AppStore extends TypedBaseStore<IAppState> {
     // Note that this method should never leak the actual repositories
     // instance since that's a mutable array. We should always return
     // a copy.
-    return this.repositories.filter(x => x !== this.selectedRepository)
+    return this.repositories.filter(
+      repository =>
+        !this.activeRepositoryPaths.has(
+          this.normalizeRepositoryPath(repository.path)
+        )
+    )
+  }
+
+  private normalizeRepositoryPath(path: string) {
+    const normalizedPath = Path.normalize(path)
+    return __WIN32__ ? normalizedPath.toLowerCase() : normalizedPath
+  }
+
+  private get shouldRunRepositoryIndicatorUpdater() {
+    return this.backgroundServicesActive && this.repositoryIndicatorsEnabled
+  }
+
+  public _setBackgroundServicesActive(active: boolean) {
+    if (this.backgroundServicesActive === active) {
+      return
+    }
+
+    this.backgroundServicesActive = active
+    if (this.shouldRunRepositoryIndicatorUpdater) {
+      this.repositoryIndicatorUpdater.start()
+      if (!this.applicationIsFocused) {
+        this.repositoryIndicatorUpdater.pause()
+      }
+    } else {
+      this.repositoryIndicatorUpdater.stop()
+    }
+  }
+
+  public _setApplicationFocusState(focused: boolean) {
+    this.applicationIsFocused = focused
+    if (!this.shouldRunRepositoryIndicatorUpdater) {
+      return
+    }
+
+    if (focused) {
+      this.repositoryIndicatorUpdater.resume()
+    } else {
+      this.repositoryIndicatorUpdater.pause()
+    }
+  }
+
+  public _setActiveRepositoryPaths(paths: ReadonlyArray<string>) {
+    this.activeRepositoryPaths = new Set(
+      paths.map(path => this.normalizeRepositoryPath(path))
+    )
+  }
+
+  public _applyRepositoryIndicator(update: IRepositoryIndicatorUpdate) {
+    if (update.state === null) {
+      this.localRepositoryStateLookup.delete(update.repositoryID)
+    } else {
+      this.localRepositoryStateLookup.set(update.repositoryID, update.state)
+    }
+    this.emitUpdate()
   }
 
   /**
@@ -4177,7 +4266,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     setBoolean(repositoryIndicatorsEnabledKey, repositoryIndicatorsEnabled)
     this.repositoryIndicatorsEnabled = repositoryIndicatorsEnabled
-    if (repositoryIndicatorsEnabled) {
+    if (this.shouldRunRepositoryIndicatorUpdater) {
       this.repositoryIndicatorUpdater.start()
     } else {
       this.repositoryIndicatorUpdater.stop()
@@ -4212,6 +4301,48 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   public _setNotificationsEnabled(notificationsEnabled: boolean) {
     this.notificationsStore.setNotificationsEnabled(notificationsEnabled)
+    notifyNotificationsSettingsChanged()
+    this.emitUpdate()
+  }
+
+  public _reloadNotificationsSettings() {
+    this.notificationsStore.reloadNotificationsEnabled()
+    this.emitUpdate()
+  }
+
+  public _reloadConfirmationPreferences() {
+    const confirmRepositoryRemoval = getBoolean(
+      confirmRepoRemovalKey,
+      confirmRepoRemovalDefault
+    )
+    const confirmDiscardChanges = getBoolean(
+      confirmDiscardChangesKey,
+      confirmDiscardChangesDefault
+    )
+    const confirmDiscardChangesPermanently = getBoolean(
+      confirmDiscardChangesPermanentlyKey,
+      confirmDiscardChangesPermanentlyDefault
+    )
+    const confirmForcePush = getBoolean(
+      confirmForcePushKey,
+      askForConfirmationOnForcePushDefault
+    )
+
+    if (
+      this.askForConfirmationOnRepositoryRemoval === confirmRepositoryRemoval &&
+      this.confirmDiscardChanges === confirmDiscardChanges &&
+      this.confirmDiscardChangesPermanently ===
+        confirmDiscardChangesPermanently &&
+      this.askForConfirmationOnForcePush === confirmForcePush
+    ) {
+      return
+    }
+
+    this.askForConfirmationOnRepositoryRemoval = confirmRepositoryRemoval
+    this.confirmDiscardChanges = confirmDiscardChanges
+    this.confirmDiscardChangesPermanently = confirmDiscardChangesPermanently
+    this.askForConfirmationOnForcePush = confirmForcePush
+    this.updateMenuLabelsForSelectedRepository()
     this.emitUpdate()
   }
 
@@ -4365,7 +4496,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     // started to refresh the repository indicators let's do so.
     if (
       foldout.type === FoldoutType.Repository &&
-      this.repositoryIndicatorsEnabled
+      this.shouldRunRepositoryIndicatorUpdater
     ) {
       // N.B: RepositoryIndicatorUpdater.prototype.start is
       // idempotent.
@@ -7500,8 +7631,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public _setConfirmRepositoryRemovalSetting(
     confirmRepoRemoval: boolean
   ): Promise<void> {
+    if (this.askForConfirmationOnRepositoryRemoval === confirmRepoRemoval) {
+      return Promise.resolve()
+    }
+
     this.askForConfirmationOnRepositoryRemoval = confirmRepoRemoval
     setBoolean(confirmRepoRemovalKey, confirmRepoRemoval)
+    notifyConfirmationPreferencesChanged()
 
     this.updateMenuLabelsForSelectedRepository()
 
@@ -7511,9 +7647,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   public _setConfirmDiscardChangesSetting(value: boolean): Promise<void> {
+    if (this.confirmDiscardChanges === value) {
+      return Promise.resolve()
+    }
+
     this.confirmDiscardChanges = value
 
     setBoolean(confirmDiscardChangesKey, value)
+    notifyConfirmationPreferencesChanged()
     this.emitUpdate()
 
     return Promise.resolve()
@@ -7522,9 +7663,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public _setConfirmDiscardChangesPermanentlySetting(
     value: boolean
   ): Promise<void> {
+    if (this.confirmDiscardChangesPermanently === value) {
+      return Promise.resolve()
+    }
+
     this.confirmDiscardChangesPermanently = value
 
     setBoolean(confirmDiscardChangesPermanentlyKey, value)
+    notifyConfirmationPreferencesChanged()
     this.emitUpdate()
 
     return Promise.resolve()
@@ -7549,8 +7695,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   public _setConfirmForcePushSetting(value: boolean): Promise<void> {
+    if (this.askForConfirmationOnForcePush === value) {
+      return Promise.resolve()
+    }
+
     this.askForConfirmationOnForcePush = value
     setBoolean(confirmForcePushKey, value)
+    notifyConfirmationPreferencesChanged()
 
     this.updateMenuLabelsForSelectedRepository()
 
@@ -7775,7 +7926,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     if (this.appIsFocused) {
-      this.repositoryIndicatorUpdater.resume()
       if (this.selectedRepository instanceof Repository) {
         this.startPullRequestUpdater(this.selectedRepository)
         // if we're in the tutorial and we don't have an editor yet, check for one!
@@ -7784,7 +7934,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
         }
       }
     } else {
-      this.repositoryIndicatorUpdater.pause()
       this.stopPullRequestUpdater()
     }
   }

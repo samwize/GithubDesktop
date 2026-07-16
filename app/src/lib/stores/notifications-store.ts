@@ -72,6 +72,7 @@ export function getNotificationsEnabled() {
  * notifications.
  */
 export class NotificationsStore {
+  private backgroundServicesActive = false
   private repository: RepositoryWithGitHubRepository | null = null
   private recentRepositories: ReadonlyArray<Repository> = []
   private onChecksFailedCallback: OnChecksFailedCallback | null = null
@@ -89,8 +90,16 @@ export class NotificationsStore {
     private readonly pullRequestCoordinator: PullRequestCoordinator,
     private readonly statsStore: StatsStore
   ) {
-    this.aliveStore.setEnabled(getNotificationsEnabled())
     this.aliveStore.onAliveEventReceived(this.onAliveEventReceived)
+  }
+
+  public setBackgroundServicesActive(active: boolean) {
+    if (this.backgroundServicesActive === active) {
+      return
+    }
+
+    this.backgroundServicesActive = active
+    this.aliveStore.setEnabled(active && getNotificationsEnabled())
   }
 
   /** Enables or disables high-signal notifications entirely. */
@@ -102,7 +111,13 @@ export class NotificationsStore {
     }
 
     setBoolean(NotificationsEnabledKey, enabled)
-    this.aliveStore.setEnabled(enabled)
+    this.aliveStore.setEnabled(this.backgroundServicesActive && enabled)
+  }
+
+  public reloadNotificationsEnabled() {
+    this.aliveStore.setEnabled(
+      this.backgroundServicesActive && getNotificationsEnabled()
+    )
   }
 
   private onAliveEventReceived = async (e: DesktopAliveEvent) =>

@@ -17,6 +17,15 @@ import { DesktopNotificationPermission } from 'desktop-notifications'
 import { NotificationCallback } from 'desktop-notifications'
 import { DesktopAliveEvent } from './stores/alive-store'
 import { CLIAction } from './cli-action'
+import { IAheadBehind } from '../models/branch'
+
+export interface IRepositoryIndicatorUpdate {
+  readonly repositoryID: number
+  readonly state: {
+    readonly aheadBehind: IAheadBehind | null
+    readonly changedFilesCount: number
+  } | null
+}
 
 /**
  * Defines the simplex IPC channel names we use from the renderer
@@ -67,6 +76,8 @@ export type RequestChannels = {
   focus: () => void
   blur: () => void
   'update-accounts': (accounts: ReadonlyArray<EndpointToken>) => void
+  'accounts-store-changed': () => void
+  'reload-accounts': () => void
   'quit-and-install-updates': () => void
   'quit-app': () => void
   'minimize-window': () => void
@@ -87,6 +98,19 @@ export type RequestChannels = {
   'show-installing-update': () => void
   'install-windows-cli': () => void
   'uninstall-windows-cli': () => void
+  'create-new-window': () => void
+  'background-services-active': (active: boolean) => void
+  'application-focus-changed': (focused: boolean) => void
+  'selected-repository-path-changed': (path: string | null) => void
+  'active-repository-paths-changed': (paths: ReadonlyArray<string>) => void
+  'repositories-store-changed': () => void
+  'reload-repositories': () => void
+  'notifications-settings-changed': () => void
+  'reload-notifications-settings': () => void
+  'confirmation-preferences-changed': () => void
+  'reload-confirmation-preferences': () => void
+  'repository-indicator-changed': (update: IRepositoryIndicatorUpdate) => void
+  'apply-repository-indicator': (update: IRepositoryIndicatorUpdate) => void
 }
 
 /**

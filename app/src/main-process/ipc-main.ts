@@ -23,7 +23,9 @@ export function on<T extends keyof RequestChannels>(
   channel: T,
   listener: RequestChannelListener<T>
 ) {
-  ipcMain.on(channel, safeListener(listener))
+  const wrappedListener = safeListener(listener)
+  ipcMain.on(channel, wrappedListener)
+  return () => ipcMain.removeListener(channel, wrappedListener)
 }
 
 /**

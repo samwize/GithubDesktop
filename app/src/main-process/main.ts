@@ -37,6 +37,7 @@ import { installAuthenticatedImageFilter } from './authenticated-image-filter'
 import { installAliveOriginFilter } from './alive-origin-filter'
 import { installSameOriginFilter } from './same-origin-filter'
 import * as ipcMain from './ipc-main'
+import * as ipcWebContents from './ipc-webcontents'
 import {
   getArchitecture,
   isAppRunningUnderARM64Translation,
@@ -48,18 +49,33 @@ import {
   requestNotificationsPermission,
   showNotification,
 } from 'desktop-notifications'
-import { initializeDesktopNotifications } from './notifications'
+import {
+  initializeDesktopNotifications,
+  installNotificationCallback,
+  terminateDesktopNotifications,
+} from './notifications'
 import parseCommandLineArgs from 'minimist'
 import { CLIAction } from '../lib/cli-action'
+import { IRepositoryIndicatorUpdate } from '../lib/ipc-shared'
+import { pathExists } from '../lib/path-exists'
+import {
+  readWindowRepositoryPaths,
+  writeWindowRepositoryPaths,
+} from './window-repository-state'
 
 app.setAppLogsPath()
 enableSourceMaps()
 
+const windows = new Map<number, AppWindow>()
+const selectedRepositoryPaths = new Map<number, string | null>()
+const repositoryIndicators = new Map<number, IRepositoryIndicatorUpdate>()
 let mainWindow: AppWindow | null = null
+let backgroundServicesOwnerID: number | null = null
 
 const launchTime = now()
 
 let preventQuit = false
+let isQuitting = false
 let readyTime: number | null = null
 
 type OnDidLoadFn = (window: AppWindow) => void
@@ -75,12 +91,13 @@ function handleUncaughtException(error: Error) {
   // exception on shutdown but that's less likely and since
   // this only affects the presentation of the crash dialog
   // it's a safe assumption to make.
-  const isLaunchError = mainWindow === null
+  const isLaunchError = windows.size === 0
 
-  if (mainWindow) {
-    mainWindow.destroy()
-    mainWindow = null
+  for (const window of windows.values()) {
+    window.destroy()
   }
+  windows.clear()
+  mainWindow = null
 
   showUncaughtException(isLaunchError, error)
 }
@@ -131,6 +148,31 @@ app.on('window-all-closed', () => {
   // the crash process window which is shown after the main window is closed.
 })
 
+app.on('before-quit', () => {
+  isQuitting = true
+  writeWindowRepositoryPaths(
+    app.getPath('userData'),
+    getActiveRepositoryPaths()
+  )
+  for (const window of windows.values()) {
+    window.markWillQuit()
+  }
+})
+
+app.on('will-quit', terminateDesktopNotifications)
+
+app.on('browser-window-focus', (_, browserWindow) => {
+  const window = windows.get(browserWindow.id)
+  if (window !== undefined) {
+    mainWindow = window
+  }
+  sendOwnerState()
+})
+
+app.on('browser-window-blur', () => {
+  setImmediate(sendOwnerState)
+})
+
 process.on('uncaughtException', (error: Error) => {
   error = withSourceMappedStack(error)
   reportError(error, getExtraErrorContext())
@@ -155,6 +197,91 @@ if (!handlingSquirrelEvent) {
 }
 
 initializeDesktopNotifications()
+installNotificationCallback(() => getTargetWindow()?.webContents ?? null)
+
+function getTargetWindow() {
+  const focusedWindow = BrowserWindow.getFocusedWindow()
+  if (focusedWindow !== null) {
+    const window = windows.get(focusedWindow.id)
+    if (window !== undefined) {
+      return window
+    }
+  }
+
+  if (mainWindow !== null && windows.has(mainWindow.id)) {
+    return mainWindow
+  }
+
+  return windows.values().next().value as AppWindow | undefined
+}
+
+function getWindowForSender(sender: Electron.WebContents) {
+  const browserWindow = BrowserWindow.fromWebContents(sender)
+  return browserWindow === null ? undefined : windows.get(browserWindow.id)
+}
+
+function sendAppMenuToAllWindows() {
+  for (const window of windows.values()) {
+    window.sendAppMenu()
+  }
+}
+
+function getActiveRepositoryPaths() {
+  return Array.from(selectedRepositoryPaths.values()).filter(
+    (path): path is string => path !== null
+  )
+}
+
+function sendOwnerState() {
+  if (backgroundServicesOwnerID === null) {
+    return
+  }
+
+  const owner = windows.get(backgroundServicesOwnerID)
+  if (owner === undefined || !owner.isLoaded) {
+    return
+  }
+
+  const focusedWindow = BrowserWindow.getFocusedWindow()
+  ipcWebContents.send(
+    owner.webContents,
+    'application-focus-changed',
+    focusedWindow !== null && windows.has(focusedWindow.id)
+  )
+  ipcWebContents.send(
+    owner.webContents,
+    'active-repository-paths-changed',
+    getActiveRepositoryPaths()
+  )
+}
+
+function assignBackgroundServicesOwner(window: AppWindow) {
+  if (backgroundServicesOwnerID === window.id) {
+    return
+  }
+
+  if (backgroundServicesOwnerID !== null) {
+    const previousOwner = windows.get(backgroundServicesOwnerID)
+    if (previousOwner?.isLoaded) {
+      ipcWebContents.send(
+        previousOwner.webContents,
+        'background-services-active',
+        false
+      )
+    }
+  }
+
+  backgroundServicesOwnerID = window.id
+  ipcWebContents.send(window.webContents, 'background-services-active', true)
+  sendOwnerState()
+}
+
+function electBackgroundServicesOwner() {
+  const owner = Array.from(windows.values()).find(window => window.isLoaded)
+  if (owner !== undefined) {
+    assignBackgroundServicesOwner(owner)
+  }
+}
 
 function handleAppURL(url: string) {
   log.info('Processing protocol url')
@@ -323,7 +450,7 @@ if (process.env.GITHUB_DESKTOP_DISABLE_HARDWARE_ACCELERATION) {
   app.disableHardwareAcceleration()
 }
 
-app.on('ready', () => {
+app.on('ready', async () => {
   if (isDuplicateInstance || handlingSquirrelEvent) {
     return
   }
@@ -332,7 +459,24 @@ app.on('ready', () => {
 
   possibleProtocols.forEach(protocol => setAsDefaultProtocolClient(protocol))
 
-  createWindow()
+  const storedRepositoryPaths = readWindowRepositoryPaths(
+    app.getPath('userData')
+  )
+  const restoredRepositoryPaths = (
+    await Promise.all(
+      storedRepositoryPaths.map(async path =>
+        (await pathExists(path)) ? path : null
+      )
+    )
+  ).filter((path): path is string => path !== null)
+
+  if (restoredRepositoryPaths.length === 0) {
+    createWindow()
+  } else {
+    for (const path of restoredRepositoryPaths) {
+      createWindow(path)
+    }
+  }
 
   const orderedWebRequest = new OrderedWebRequest(
     session.defaultSession.webRequest
@@ -360,7 +504,108 @@ app.on('ready', () => {
 
   ipcMain.on('update-accounts', (_, accounts) => updateAccounts(accounts))
 
-  ipcMain.on('update-preferred-app-menu-item-labels', (_, labels) => {
+  ipcMain.on('create-new-window', () => createWindow())
+
+  ipcMain.on('selected-repository-path-changed', (event, path) => {
+    const window = getWindowForSender(event.sender)
+    if (window === undefined) {
+      return
+    }
+
+    selectedRepositoryPaths.set(window.id, path)
+    writeWindowRepositoryPaths(
+      app.getPath('userData'),
+      getActiveRepositoryPaths()
+    )
+    sendOwnerState()
+  })
+
+  ipcMain.on('repositories-store-changed', event => {
+    for (const window of windows.values()) {
+      if (window.webContents !== event.sender) {
+        ipcWebContents.send(window.webContents, 'reload-repositories')
+      }
+    }
+  })
+
+  ipcMain.on('accounts-store-changed', event => {
+    for (const window of windows.values()) {
+      if (window.webContents !== event.sender) {
+        ipcWebContents.send(window.webContents, 'reload-accounts')
+      }
+    }
+  })
+
+  ipcMain.on('notifications-settings-changed', event => {
+    for (const window of windows.values()) {
+      if (window.webContents !== event.sender) {
+        ipcWebContents.send(window.webContents, 'reload-notifications-settings')
+      }
+    }
+  })
+
+  ipcMain.on('confirmation-preferences-changed', event => {
+    for (const window of windows.values()) {
+      if (window.webContents !== event.sender) {
+        ipcWebContents.send(
+          window.webContents,
+          'reload-confirmation-preferences'
+        )
+      }
+    }
+  })
+
+  ipcMain.on('repository-indicator-changed', (event, update) => {
+    const source = getWindowForSender(event.sender)
+    if (source === undefined) {
+      return
+    }
+
+    if (update.state === null) {
+      repositoryIndicators.delete(update.repositoryID)
+    } else {
+      repositoryIndicators.set(update.repositoryID, update)
+    }
+
+    for (const window of windows.values()) {
+      if (window.id !== source.id) {
+        ipcWebContents.send(
+          window.webContents,
+          'apply-repository-indicator',
+          update
+        )
+      }
+    }
+  })
+
+  ipcMain.on('will-quit', event => {
+    for (const window of windows.values()) {
+      window.markWillQuit()
+    }
+    event.returnValue = true
+  })
+
+  ipcMain.on('will-quit-even-if-updating', event => {
+    for (const window of windows.values()) {
+      window.markWillQuitEvenIfUpdating()
+    }
+    event.returnValue = true
+  })
+
+  ipcMain.on('cancel-quitting', event => {
+    isQuitting = false
+    for (const window of windows.values()) {
+      window.cancelQuitting()
+    }
+    event.returnValue = true
+  })
+
+  ipcMain.on('update-preferred-app-menu-item-labels', (event, labels) => {
+    const senderWindow = getWindowForSender(event.sender)
+    if (senderWindow === undefined || !senderWindow.isFocused()) {
+      return
+    }
+
     // The current application menu is mutable and we frequently
     // change whether particular items are enabled or not through
     // the update-menu-state IPC event. This menu that we're creating
@@ -379,9 +624,7 @@ app.on('ready', () => {
       // https://github.com/electron/electron/issues/2717
       Menu.setApplicationMenu(newMenu)
 
-      if (mainWindow !== null) {
-        mainWindow.sendAppMenu()
-      }
+      sendAppMenuToAllWindows()
 
       return
     }
@@ -425,10 +668,10 @@ app.on('ready', () => {
       }
     }
 
-    if (menuHasChanged && mainWindow) {
+    if (menuHasChanged) {
       // https://github.com/electron/electron/issues/2717
       Menu.setApplicationMenu(newMenu)
-      mainWindow.sendAppMenu()
+      sendAppMenuToAllWindows()
     }
   })
 
@@ -451,7 +694,11 @@ app.on('ready', () => {
     }
   })
 
-  ipcMain.on('update-menu-state', (_, items) => {
+  ipcMain.on('update-menu-state', (event, items) => {
+    const senderWindow = getWindowForSender(event.sender)
+    if (senderWindow === undefined || !senderWindow.isFocused()) {
+      return
+    }
     let sendMenuChangedEvent = false
 
     const currentMenu = Menu.getApplicationMenu()
@@ -479,9 +726,9 @@ app.on('ready', () => {
       }
     }
 
-    if (sendMenuChangedEvent && mainWindow) {
+    if (sendMenuChangedEvent) {
       Menu.setApplicationMenu(currentMenu)
-      mainWindow.sendAppMenu()
+      sendAppMenuToAllWindows()
     }
   })
 
@@ -511,43 +758,51 @@ app.on('ready', () => {
     })
   })
 
-  ipcMain.handle('check-for-updates', async (_, url) =>
-    mainWindow?.checkForUpdates(url)
+  ipcMain.handle('check-for-updates', async (event, url) =>
+    getWindowForSender(event.sender)?.checkForUpdates(url)
   )
 
-  ipcMain.on('quit-and-install-updates', () =>
-    mainWindow?.quitAndInstallUpdate()
+  ipcMain.on('quit-and-install-updates', event =>
+    getWindowForSender(event.sender)?.quitAndInstallUpdate()
   )
 
   ipcMain.on('quit-app', () => app.quit())
 
-  ipcMain.on('minimize-window', () => mainWindow?.minimizeWindow())
+  ipcMain.on('minimize-window', event =>
+    getWindowForSender(event.sender)?.minimizeWindow()
+  )
 
-  ipcMain.on('maximize-window', () => mainWindow?.maximizeWindow())
+  ipcMain.on('maximize-window', event =>
+    getWindowForSender(event.sender)?.maximizeWindow()
+  )
 
-  ipcMain.on('unmaximize-window', () => mainWindow?.unmaximizeWindow())
+  ipcMain.on('unmaximize-window', event =>
+    getWindowForSender(event.sender)?.unmaximizeWindow()
+  )
 
-  ipcMain.on('close-window', () => mainWindow?.closeWindow())
+  ipcMain.on('close-window', event =>
+    getWindowForSender(event.sender)?.closeWindow()
+  )
 
   ipcMain.handle(
     'is-window-maximized',
-    async () => mainWindow?.isMaximized() ?? false
+    async event => getWindowForSender(event.sender)?.isMaximized() ?? false
   )
 
   ipcMain.handle('get-apple-action-on-double-click', async () =>
     systemPreferences.getUserDefault('AppleActionOnDoubleClick', 'string')
   )
 
-  ipcMain.handle('get-current-window-state', async () =>
-    mainWindow?.getCurrentWindowState()
+  ipcMain.handle('get-current-window-state', async event =>
+    getWindowForSender(event.sender)?.getCurrentWindowState()
   )
 
-  ipcMain.handle('get-current-window-zoom-factor', async () =>
-    mainWindow?.getCurrentWindowZoomFactor()
+  ipcMain.handle('get-current-window-zoom-factor', async event =>
+    getWindowForSender(event.sender)?.getCurrentWindowZoomFactor()
   )
 
-  ipcMain.on('set-window-zoom-factor', (_, zoomFactor: number) =>
-    mainWindow?.setWindowZoomFactor(zoomFactor)
+  ipcMain.on('set-window-zoom-factor', (event, zoomFactor: number) =>
+    getWindowForSender(event.sender)?.setWindowZoomFactor(zoomFactor)
   )
 
   if (__WIN32__) {
@@ -559,14 +814,17 @@ app.on('ready', () => {
    * An event sent by the renderer asking for a copy of the current
    * application menu.
    */
-  ipcMain.on('get-app-menu', () => mainWindow?.sendAppMenu())
+  ipcMain.on('get-app-menu', event =>
+    getWindowForSender(event.sender)?.sendAppMenu()
+  )
 
-  ipcMain.on('show-certificate-trust-dialog', (_, certificate, message) => {
+  ipcMain.on('show-certificate-trust-dialog', (event, certificate, message) => {
     // This API is only implemented for macOS and Windows right now.
     if (__DARWIN__ || __WIN32__) {
-      onDidLoad(window => {
-        window.showCertificateTrustDialog(certificate, message)
-      })
+      getWindowForSender(event.sender)?.showCertificateTrustDialog(
+        certificate,
+        message
+      )
     }
   })
 
@@ -642,12 +900,14 @@ app.on('ready', () => {
   )
 
   /** An event sent by the renderer asking to select all of the window's contents */
-  ipcMain.on('select-all-window-contents', () =>
-    mainWindow?.selectAllWindowContents()
+  ipcMain.on('select-all-window-contents', event =>
+    getWindowForSender(event.sender)?.selectAllWindowContents()
   )
 
   /** An event sent by the renderer indicating a modal dialog is opened */
-  ipcMain.on('dialog-did-open', () => mainWindow?.dialogDidOpen())
+  ipcMain.on('dialog-did-open', event =>
+    getWindowForSender(event.sender)?.dialogDidOpen()
+  )
 
   /**
    * An event sent by the renderer asking whether the Desktop is in the
@@ -675,7 +935,8 @@ app.on('ready', () => {
    */
   ipcMain.handle(
     'show-save-dialog',
-    async (_, options) => mainWindow?.showSaveDialog(options) ?? null
+    async (event, options) =>
+      getWindowForSender(event.sender)?.showSaveDialog(options) ?? null
   )
 
   /**
@@ -683,7 +944,8 @@ app.on('ready', () => {
    */
   ipcMain.handle(
     'show-open-dialog',
-    async (_, options) => mainWindow?.showOpenDialog(options) ?? null
+    async (event, options) =>
+      getWindowForSender(event.sender)?.showOpenDialog(options) ?? null
   )
 
   /**
@@ -691,12 +953,12 @@ app.on('ready', () => {
    */
   ipcMain.handle(
     'is-window-focused',
-    async () => mainWindow?.isFocused() ?? false
+    async event => getWindowForSender(event.sender)?.isFocused() ?? false
   )
 
   /** An event sent by the renderer asking to focus the main window. */
-  ipcMain.on('focus-window', () => {
-    mainWindow?.focus()
+  ipcMain.on('focus-window', event => {
+    getWindowForSender(event.sender)?.focus()
   })
 
   ipcMain.on('set-native-theme-source', (_, themeName) => {
@@ -725,9 +987,12 @@ app.on('ready', () => {
 })
 
 app.on('activate', () => {
-  onDidLoad(window => {
+  const window = getTargetWindow()
+  if (window === undefined) {
+    createWindow()
+  } else {
     window.show()
-  })
+  }
 })
 
 app.on('web-contents-created', (event, contents) => {
@@ -755,10 +1020,21 @@ app.on(
   }
 )
 
-function createWindow() {
-  const window = new AppWindow()
+let installedDevTools = false
 
-  if (__DEV__) {
+function createWindow(initialRepositoryPath: string | null = null) {
+  const restoreWindowState = windows.size === 0
+  const window = new AppWindow(
+    restoreWindowState,
+    () => windows.size === 1,
+    initialRepositoryPath
+  )
+  windows.set(window.id, window)
+  selectedRepositoryPaths.set(window.id, initialRepositoryPath)
+  mainWindow = window
+
+  if (__DEV__ && !installedDevTools) {
+    installedDevTools = true
     const {
       default: installExtension,
       REACT_DEVELOPER_TOOLS,
@@ -781,10 +1057,33 @@ function createWindow() {
   }
 
   window.onClosed(() => {
-    mainWindow = null
-    if (!__DARWIN__ && !preventQuit) {
+    const wasBackgroundServicesOwner = backgroundServicesOwnerID === window.id
+    windows.delete(window.id)
+    selectedRepositoryPaths.delete(window.id)
+    if (!isQuitting) {
+      writeWindowRepositoryPaths(
+        app.getPath('userData'),
+        getActiveRepositoryPaths()
+      )
+    }
+    if (mainWindow === window) {
+      mainWindow = getTargetWindow() ?? null
+    }
+
+    if (wasBackgroundServicesOwner) {
+      backgroundServicesOwnerID = null
+      electBackgroundServicesOwner()
+    } else {
+      sendOwnerState()
+    }
+
+    if (!__DARWIN__ && windows.size === 0 && !preventQuit) {
       app.quit()
     }
+  })
+
+  window.onFocused(() => {
+    mainWindow = window
   })
 
   window.onDidLoad(() => {
@@ -795,16 +1094,33 @@ function createWindow() {
       rendererReadyTime: window.rendererReadyTime!,
     })
 
-    const fns = onDidLoadFns!
-    onDidLoadFns = null
-    for (const fn of fns) {
-      fn(window)
+    if (backgroundServicesOwnerID === null) {
+      assignBackgroundServicesOwner(window)
+    } else {
+      ipcWebContents.send(
+        window.webContents,
+        'background-services-active',
+        false
+      )
+      for (const update of repositoryIndicators.values()) {
+        ipcWebContents.send(
+          window.webContents,
+          'apply-repository-indicator',
+          update
+        )
+      }
+    }
+
+    if (onDidLoadFns !== null) {
+      const fns = onDidLoadFns
+      onDidLoadFns = null
+      for (const fn of fns) {
+        fn(window)
+      }
     }
   })
 
   window.load()
-
-  mainWindow = window
 }
 
 /**
@@ -815,8 +1131,9 @@ function onDidLoad(fn: OnDidLoadFn) {
   if (onDidLoadFns) {
     onDidLoadFns.push(fn)
   } else {
-    if (mainWindow) {
-      fn(mainWindow)
+    const window = getTargetWindow()
+    if (window !== undefined) {
+      fn(window)
     }
   }
 }
