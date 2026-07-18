@@ -11,6 +11,8 @@ So I stopped waiting.
 
 ## What this fork fixes
 
+### 1. One project, one window
+
 Open **File → New Window** or press `Cmd` + `Ctrl` + `N` on macOS (`Ctrl` +
 `Alt` + `N` on Windows and Linux). Every window gets its own repository,
 branch, history, and working state.
@@ -25,6 +27,28 @@ owns the background work and another window takes over automatically.
 
 The result is boring in the best possible way: one project per window, on the
 desktop where it belongs.
+
+### 2. One timeline. Zero tabs.
+
+The Changes tab and History tab were never two different things. They were the
+present and past of the same repository, split by a switch nobody needed.
+
+GitPub removes the switch. The commit graph is now the default workspace, with
+a selectable Working tree connected directly to HEAD.
+
+Click Working tree and the right side becomes the full commit workflow: changed
+files, line selection, diffs, commit message, stash and conflict tools, and the
+Commit button. Click any commit and the same space shows its summary, files,
+and diff.
+
+Your current branch is impossible to miss. Other branches and merges draw
+themselves as lines, so you can see where the work came from instead of
+reconstructing it in your head.
+
+![GitPub showing the unified working tree and commit timeline for the GithubDesktop repository](./docs/assets/gitpub-unified-timeline.jpg)
+
+No mode switch. No context reset. Just where the repository is now, and exactly
+how it got there.
 
 ## Run it
 
@@ -44,3 +68,5 @@ This is an unofficial fork. It isn't affiliated with or supported by GitHub,
 Inc.
 
 I needed windows. Now it has windows.
+
+I wanted the whole repository in one view. Now it has that too.
