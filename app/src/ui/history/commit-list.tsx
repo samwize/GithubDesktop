@@ -706,6 +706,7 @@ export class CommitList extends React.Component<
               shasToHighlight: this.props.shasToHighlight,
               preferAbsoluteDates: this.props.preferAbsoluteDates,
               commitGraph: commitGraph?.hash,
+              currentBranchUpstream: this.props.currentBranch?.upstream,
             }}
             setScrollTop={this.props.compareListScrollTop}
             rowCustomClassNameMap={this.getRowCustomClassMap()}
