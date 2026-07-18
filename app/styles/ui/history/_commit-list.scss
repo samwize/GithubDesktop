@@ -109,6 +109,95 @@
   padding-right: calc(var(--spacing) + var(--spacing-half));
   padding-left: var(--spacing);
 
+  .commit-graph {
+    flex: 0 0 auto;
+    margin-left: calc(var(--spacing) * -1);
+
+    &-line {
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-width: 1.5px;
+
+      &.commit-graph-color-0 {
+        stroke-width: 2.5px;
+      }
+    }
+
+    &-node {
+      fill: currentColor;
+      stroke: var(--background-color);
+      stroke-width: 2px;
+    }
+
+    &-color-0 {
+      color: var(--accent-color);
+    }
+
+    &-color-1 {
+      color: $green-500;
+    }
+
+    &-color-2 {
+      color: $orange-500;
+    }
+
+    &-color-3 {
+      color: $purple-500;
+    }
+
+    &-color-4 {
+      color: $red-500;
+    }
+
+    &-color-5 {
+      color: $purple-300;
+    }
+
+    &-color-6 {
+      color: $yellow-700;
+    }
+
+    &-color-7 {
+      color: $gray-500;
+    }
+  }
+
+  &.working-tree-row {
+    border: 0;
+    border-bottom: var(--base-border);
+    border-radius: 0;
+    box-shadow: none;
+    color: var(--text-color);
+    cursor: default;
+    flex: 0 0 50px;
+    font-family: var(--font-family-sans-serif);
+    font-size: var(--font-size);
+    text-align: left;
+
+    &:hover:not(.selected) {
+      background-color: var(--list-item-hover-background-color);
+    }
+
+    &.selected {
+      background-color: var(--box-selected-background-color);
+    }
+
+    .commit-graph-node {
+      fill: var(--background-color);
+      stroke: currentColor;
+    }
+
+    &.selected .commit-graph-node {
+      fill: var(--box-selected-background-color);
+    }
+
+    .working-tree-description {
+      color: var(--text-secondary-color);
+      font-size: var(--font-size-sm);
+    }
+  }
+
   .info {
     display: flex;
     flex: 1 1 auto;
@@ -117,10 +206,58 @@
     overflow: hidden;
     min-width: 50px;
 
+    .commit-summary-line {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .commit-graph-refs {
+      display: flex;
+      flex: 0 1 auto;
+      gap: 3px;
+      margin-right: var(--spacing-half);
+      max-width: 65%;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .commit-graph-ref {
+      @include ellipsis;
+      background: var(--list-item-badge-background-color);
+      border-radius: var(--border-radius);
+      color: var(--list-item-badge-color);
+      flex: 0 1 auto;
+      font-size: var(--font-size-sm);
+      line-height: 16px;
+      max-width: 140px;
+      padding: 0 var(--spacing-half);
+
+      &.current {
+        background: var(--button-background);
+        color: var(--button-text-color);
+        flex-shrink: 0;
+        font-weight: var(--font-weight-semibold);
+        max-width: 220px;
+      }
+
+      &.remote {
+        opacity: 0.8;
+      }
+    }
+
     .description {
       display: flex;
       flex-direction: row;
       margin-top: 3px;
+    }
+
+    .commit-graph-tracking {
+      @include ellipsis;
+      color: var(--text-secondary-color);
+      flex: 0 1 auto;
+      font-size: var(--font-size-sm);
+      margin-right: var(--spacing-half);
     }
 
     .summary {
@@ -134,6 +271,11 @@
     .summary,
     .byline {
       @include ellipsis;
+    }
+
+    .summary {
+      flex: 1 1 auto;
+      min-width: 0;
     }
   }
 

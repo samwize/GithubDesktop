@@ -22,15 +22,19 @@
     flex-direction: column;
     border-right: 1px solid var(--box-border-color);
 
-    .tab-bar {
-      flex-shrink: 0;
-    }
-
     .panel {
       height: 100%;
       flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
+    }
+  }
+
+  #working-tree {
+    min-width: 0;
+
+    > .resizable-component {
+      border-right: var(--base-border);
     }
   }
 }
