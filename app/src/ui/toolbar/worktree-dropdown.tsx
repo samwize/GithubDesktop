@@ -25,6 +25,7 @@ interface IWorktreeDropdownProps {
 
 interface IWorktreeDropdownState {
   readonly filterText: string
+  readonly isRemovingCleanWorktrees: boolean
 }
 
 export class WorktreeDropdown extends React.Component<
@@ -35,6 +36,7 @@ export class WorktreeDropdown extends React.Component<
     super(props)
     this.state = {
       filterText: '',
+      isRemovingCleanWorktrees: false,
     }
   }
 
@@ -84,6 +86,19 @@ export class WorktreeDropdown extends React.Component<
     })
   }
 
+  private onRemoveCleanWorktrees = async () => {
+    if (this.state.isRemovingCleanWorktrees) {
+      return
+    }
+
+    this.setState({ isRemovingCleanWorktrees: true })
+    await new Promise<void>(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    })
+    await this.props.dispatcher.removeCleanWorktrees(this.props.repository)
+    this.setState({ isRemovingCleanWorktrees: false })
+  }
+
   private onContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
 
@@ -125,6 +140,8 @@ export class WorktreeDropdown extends React.Component<
         onFilterTextChanged={this.onFilterTextChanged}
         canCreateNewWorktree={true}
         onCreateNewWorktree={this.onCreateNewWorktree}
+        onRemoveCleanWorktrees={this.onRemoveCleanWorktrees}
+        isRemovingCleanWorktrees={this.state.isRemovingCleanWorktrees}
         onWorktreeContextMenu={this.onWorktreeContextMenu}
       />
     )

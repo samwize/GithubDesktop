@@ -216,6 +216,7 @@ import {
   RepositoryType,
   listWorktrees,
   listWorktreesFromGitDir,
+  isWorktreeClean,
   removeWorktree,
   moveWorktree,
   getCommitRangeDiff,
@@ -6180,6 +6181,62 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     await this._refreshWorktrees(repository)
     this.statsStore.increment('worktreeDeletedCount')
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
+  public async _removeCleanWorktrees(repository: Repository): Promise<void> {
+    const worktrees = await listWorktrees(repository)
+    const candidates = worktrees.filter(
+      worktree => worktree.type === 'linked' && !worktree.isLocked
+    )
+
+    const cleanWorktrees = (
+      await Promise.all(
+        candidates.map(async worktree => {
+          try {
+            return (await isWorktreeClean(worktree.path)) ? worktree : null
+          } catch (e) {
+            log.error(`Could not check worktree status at ${worktree.path}`, e)
+            return null
+          }
+        })
+      )
+    ).filter((worktree): worktree is WorktreeEntry => worktree !== null)
+
+    if (cleanWorktrees.length === 0) {
+      return
+    }
+
+    const currentWorktree = cleanWorktrees.find(
+      worktree => worktree.path === repository.path
+    )
+
+    if (currentWorktree !== undefined) {
+      const main = worktrees.find(worktree => worktree.type === 'main')
+      if (main === undefined) {
+        throw new Error('Could not find main worktree')
+      }
+
+      repository = await this._switchWorktree(repository, main)
+    }
+
+    let firstError: Error | null = null
+
+    for (const worktree of cleanWorktrees) {
+      try {
+        await removeWorktree(repository.path, worktree.path)
+        this.statsStore.increment('worktreeDeletedCount')
+      } catch (e) {
+        log.error(`Could not remove clean worktree at ${worktree.path}`, e)
+        firstError ??= e
+      }
+    }
+
+    await this._refreshWorktrees(repository)
+
+    if (firstError !== null) {
+      throw firstError
+    }
   }
 
   /** This shouldn't be called directly. See 'Dispatcher'. */

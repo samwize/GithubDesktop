@@ -1073,6 +1073,12 @@ export class Dispatcher {
     this.appStore._requestDeleteWorktree(repository, worktreePath)
   }
 
+  public async removeCleanWorktrees(repository: Repository): Promise<void> {
+    await this.appStore
+      ._removeCleanWorktrees(repository)
+      .catch(e => this.postError(e))
+  }
+
   /**
    * Set the width of the Push/Push toolbar button to the given value.
    * This affects the toolbar button and its dropdown element.
