@@ -3302,7 +3302,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (forceButtonFocus) {
       const repoSideBar = document.getElementById('repository-sidebar')
       const button = repoSideBar?.querySelector(
-        '.tab-bar-item.selected'
+        '.working-tree-row.selected'
       ) as HTMLButtonElement
       button?.focus()
     }

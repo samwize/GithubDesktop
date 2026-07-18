@@ -27,6 +27,9 @@ import { Emoji } from '../../lib/emoji'
 import { enableAccessibleListToolTips } from '../../lib/feature-flag'
 import { TooltippedContent } from '../lib/tooltipped-content'
 import { formatDate } from '../../lib/format-date'
+import { BranchType } from '../../models/branch'
+import { CommitGraph } from './commit-graph'
+import { ICommitGraphRef, ICommitGraphRow } from './commit-graph-layout'
 
 interface ICommitProps {
   readonly gitHubRepository: GitHubRepository | null
@@ -50,6 +53,10 @@ interface ICommitProps {
   readonly unpushedIndicatorTitle?: string
   readonly accounts: ReadonlyArray<Account>
   readonly preferAbsoluteDates: boolean
+  readonly commitGraphRow?: ICommitGraphRow
+  readonly commitGraphLaneCount?: number
+  readonly connectCommitGraphFromTop?: boolean
+  readonly currentBranchUpstream?: string | null
 }
 
 interface ICommitListItemState {
@@ -152,14 +159,19 @@ export class CommitListItem extends React.PureComponent<
           onMouseLeave={this.onMouseLeave}
           onMouseUp={this.onMouseUp}
         >
+          {this.renderCommitGraph()}
           <div className="info">
-            <RichText
-              className={summaryClassNames}
-              emoji={this.props.emoji}
-              text={commitSummary}
-              renderUrlsAsLinks={false}
-            />
+            <div className="commit-summary-line">
+              {this.renderBranchRefs()}
+              <RichText
+                className={summaryClassNames}
+                emoji={this.props.emoji}
+                text={commitSummary}
+                renderUrlsAsLinks={false}
+              />
+            </div>
             <div className="description">
+              {this.renderTrackingBranch()}
               <AvatarStack
                 users={this.state.avatarUsers}
                 accounts={this.props.accounts}
@@ -175,6 +187,72 @@ export class CommitListItem extends React.PureComponent<
         </div>
       </Draggable>
     )
+  }
+
+  private renderCommitGraph() {
+    const { commitGraphRow, commitGraphLaneCount } = this.props
+    if (commitGraphRow === undefined || commitGraphLaneCount === undefined) {
+      return null
+    }
+
+    return (
+      <CommitGraph
+        row={commitGraphRow}
+        laneCount={commitGraphLaneCount}
+        connectFromTop={this.props.connectCommitGraphFromTop}
+      />
+    )
+  }
+
+  private renderBranchRefs() {
+    const refs = this.props.commitGraphRow?.refs
+    if (refs === undefined || refs.length === 0) {
+      return null
+    }
+
+    const upstream = this.props.currentBranchUpstream
+    const hasCurrentRef =
+      upstream !== undefined &&
+      upstream !== null &&
+      refs.some(ref => ref.isCurrent)
+    const visibleRefs = hasCurrentRef
+      ? refs.filter(
+          ref => ref.type !== BranchType.Remote || ref.name !== upstream
+        )
+      : refs
+
+    return (
+      <div className="commit-graph-refs">
+        {visibleRefs.map(ref => (
+          <span
+            className={getBranchRefClassName(ref)}
+            key={`${ref.type}:${ref.name}`}
+          >
+            {ref.isCurrent ? (
+              <>
+                <span className="sr-only">HEAD, current branch: </span>
+                {ref.name}
+              </>
+            ) : (
+              ref.name
+            )}
+          </span>
+        ))}
+      </div>
+    )
+  }
+
+  private renderTrackingBranch() {
+    const upstream = this.props.currentBranchUpstream
+    if (
+      upstream === undefined ||
+      upstream === null ||
+      !this.props.commitGraphRow?.refs.some(ref => ref.isCurrent)
+    ) {
+      return null
+    }
+
+    return <span className="commit-graph-tracking">tracks {upstream}</span>
   }
 
   private renderCommitIndicators() {
@@ -233,6 +311,14 @@ export class CommitListItem extends React.PureComponent<
       this.props.onRemoveDragElement()
     }
   }
+}
+
+function getBranchRefClassName(ref: ICommitGraphRef): string {
+  return classNames('commit-graph-ref', {
+    current: ref.isCurrent,
+    local: !ref.isCurrent && ref.type === BranchType.Local,
+    remote: ref.type === BranchType.Remote,
+  })
 }
 
 function renderRelativeTime(date: Date, preferAbsoluteDates: boolean) {

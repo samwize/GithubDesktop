@@ -29,6 +29,9 @@ import { formatDate } from '../../lib/format-date'
 import { Avatar } from '../lib/avatar'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
+import { Branch } from '../../models/branch'
+import { buildCommitGraph } from './commit-graph-layout'
+import { WorkingTreeGraph } from './commit-graph'
 
 const RowHeight = 50
 
@@ -184,6 +187,13 @@ interface ICommitListProps {
 
   /** This will make the list semantics friendly to screen reader users in browse mode. */
   readonly isInformationalView?: boolean
+
+  readonly showCommitGraph?: boolean
+  readonly branches?: ReadonlyArray<Branch>
+  readonly currentBranch?: Branch | null
+  readonly uncommittedChangesCount?: number
+  readonly isWorkingTreeSelected?: boolean
+  readonly onWorkingTreeSelected?: () => void
 }
 
 interface ICommitListState {
@@ -203,6 +213,22 @@ export class CommitList extends React.Component<
   private commitIndexBySha = memoizeOne(
     (commitSHAs: ReadonlyArray<string>) =>
       new Map(commitSHAs.map((sha, index) => [sha, index]))
+  )
+  private commitGraph = memoizeOne(
+    (
+      commitSHAs: ReadonlyArray<string>,
+      commitLookup: Map<string, Commit>,
+      branches: ReadonlyArray<Branch>,
+      currentBranch: Branch | null
+    ) =>
+      buildCommitGraph(
+        commitSHAs.flatMap(sha => {
+          const commit = commitLookup.get(sha)
+          return commit === undefined ? [] : [commit]
+        }),
+        branches,
+        currentBranch
+      )
   )
 
   private containerRef = React.createRef<HTMLDivElement>()
@@ -289,6 +315,8 @@ export class CommitList extends React.Component<
       (isLocal || unpushedTags.length > 0) &&
       this.props.isLocalRepository === false
 
+    const commitGraph = this.getCommitGraph()
+
     return (
       <CommitListItem
         key={commit.sha}
@@ -311,12 +339,64 @@ export class CommitList extends React.Component<
         disableSquashing={this.props.disableSquashing}
         accounts={this.props.accounts}
         preferAbsoluteDates={this.props.preferAbsoluteDates}
+        commitGraphRow={commitGraph?.rows.get(commit.sha)}
+        commitGraphLaneCount={commitGraph?.laneCount}
+        connectCommitGraphFromTop={
+          row === 0 && this.props.showCommitGraph === true
+        }
+        currentBranchUpstream={this.props.currentBranch?.upstream}
       />
+    )
+  }
+
+  private renderWorkingTree(laneCount: number) {
+    const count = this.props.uncommittedChangesCount ?? 0
+    if (this.props.showCommitGraph !== true) {
+      return null
+    }
+
+    const description =
+      count === 0
+        ? 'Clean'
+        : `${count} uncommitted ${count === 1 ? 'file' : 'files'}`
+
+    return (
+      <button
+        type="button"
+        className={classNames('commit', 'working-tree-row', {
+          selected: this.props.isWorkingTreeSelected === true,
+        })}
+        aria-pressed={this.props.isWorkingTreeSelected === true}
+        onClick={this.props.onWorkingTreeSelected}
+      >
+        <WorkingTreeGraph laneCount={laneCount} />
+        <div className="info">
+          <div className="commit-summary-line">
+            <span className="summary">Working tree</span>
+          </div>
+          <div className="description working-tree-description">
+            {description}
+          </div>
+        </div>
+      </button>
     )
   }
 
   private get inKeyboardReorderMode() {
     return this.props.keyboardReorderData !== undefined
+  }
+
+  private getCommitGraph() {
+    if (this.props.showCommitGraph !== true) {
+      return null
+    }
+
+    return this.commitGraph(
+      this.props.commitSHAs,
+      this.props.commitLookup,
+      this.props.branches ?? [],
+      this.props.currentBranch ?? null
+    )
   }
 
   private getLastRetainedCommitRef(indexes: ReadonlyArray<number>) {
@@ -564,7 +644,9 @@ export class CommitList extends React.Component<
       reorderingEnabled,
       isMultiCommitOperationInProgress,
     } = this.props
-    if (commitSHAs.length === 0) {
+    const showWorkingTree = this.props.showCommitGraph === true
+
+    if (commitSHAs.length === 0 && !showWorkingTree) {
       return (
         <div className="panel blankslate">
           {emptyListMessage ?? 'No commits to list'}
@@ -580,49 +662,61 @@ export class CommitList extends React.Component<
     const selectedRows = selectedSHAs
       .map(sha => this.rowForSHA(sha))
       .filter(r => r !== -1)
+    const commitGraph = this.getCommitGraph()
 
     return (
       <div id="commit-list" className={classes} ref={this.containerRef}>
         {this.renderReorderCommitsHint()}
-        <List
-          ariaLabel="Commits"
-          role={this.props.isInformationalView === true ? 'list' : 'listbox'}
-          ref={this.listRef}
-          rowCount={commitSHAs.length}
-          rowHeight={RowHeight}
-          selectedRows={selectedRows}
-          rowRenderer={this.renderCommit}
-          onDropDataInsertion={this.onDropDataInsertion}
-          onSelectionChanged={this.onSelectionChanged}
-          onSelectedRowChanged={this.onSelectedRowChanged}
-          onKeyboardInsertionIndexPathChanged={
-            this.onKeyboardInsertionIndexPathChanged
-          }
-          onCancelKeyboardInsertion={this.props.onCancelKeyboardReorder}
-          onConfirmKeyboardInsertion={this.onConfirmKeyboardReorder}
-          onRowContextMenu={this.onRowContextMenu}
-          selectionMode="multi"
-          onScroll={this.onScroll}
-          keyboardInsertionData={this.props.keyboardReorderData}
-          keyboardInsertionElementRenderer={this.renderKeyboardInsertionElement}
-          insertionDragType={
-            reorderingEnabled === true &&
-            isMultiCommitOperationInProgress === false
-              ? DragType.Commit
-              : undefined
-          }
-          invalidationProps={{
-            commits: this.props.commitSHAs,
-            localCommitSHAs: this.props.localCommitSHAs,
-            commitLookupHash: this.commitsHash(this.getVisibleCommits()),
-            tagsToPush: this.props.tagsToPush,
-            shasToHighlight: this.props.shasToHighlight,
-            preferAbsoluteDates: this.props.preferAbsoluteDates,
-          }}
-          setScrollTop={this.props.compareListScrollTop}
-          rowCustomClassNameMap={this.getRowCustomClassMap()}
-          renderRowFocusTooltip={this.renderRowFocusTooltip}
-        />
+        {this.renderWorkingTree(commitGraph?.laneCount ?? 1)}
+        {commitSHAs.length > 0 ? (
+          <List
+            ariaLabel="Commits"
+            role={this.props.isInformationalView === true ? 'list' : 'listbox'}
+            ref={this.listRef}
+            rowCount={commitSHAs.length}
+            rowHeight={RowHeight}
+            selectedRows={selectedRows}
+            rowRenderer={this.renderCommit}
+            onDropDataInsertion={this.onDropDataInsertion}
+            onSelectionChanged={this.onSelectionChanged}
+            onSelectedRowChanged={this.onSelectedRowChanged}
+            onKeyboardInsertionIndexPathChanged={
+              this.onKeyboardInsertionIndexPathChanged
+            }
+            onCancelKeyboardInsertion={this.props.onCancelKeyboardReorder}
+            onConfirmKeyboardInsertion={this.onConfirmKeyboardReorder}
+            onRowContextMenu={this.onRowContextMenu}
+            selectionMode="multi"
+            onScroll={this.onScroll}
+            keyboardInsertionData={this.props.keyboardReorderData}
+            keyboardInsertionElementRenderer={
+              this.renderKeyboardInsertionElement
+            }
+            insertionDragType={
+              reorderingEnabled === true &&
+              isMultiCommitOperationInProgress === false
+                ? DragType.Commit
+                : undefined
+            }
+            invalidationProps={{
+              commits: this.props.commitSHAs,
+              localCommitSHAs: this.props.localCommitSHAs,
+              commitLookupHash: this.commitsHash(this.getVisibleCommits()),
+              tagsToPush: this.props.tagsToPush,
+              shasToHighlight: this.props.shasToHighlight,
+              preferAbsoluteDates: this.props.preferAbsoluteDates,
+              commitGraph: commitGraph?.hash,
+              currentBranchUpstream: this.props.currentBranch?.upstream,
+            }}
+            setScrollTop={this.props.compareListScrollTop}
+            rowCustomClassNameMap={this.getRowCustomClassMap()}
+            renderRowFocusTooltip={this.renderRowFocusTooltip}
+          />
+        ) : (
+          <div className="panel blankslate">
+            {emptyListMessage ?? 'No commits to list'}
+          </div>
+        )}
         <AriaLiveContainer message={this.state.reorderingMessage} />
       </div>
     )

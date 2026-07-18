@@ -62,6 +62,10 @@ interface ICompareSidebarProps {
   readonly shasToHighlight: ReadonlyArray<string>
   readonly accounts: ReadonlyArray<Account>
   readonly preferAbsoluteDates: boolean
+  readonly uncommittedChangesCount: number
+  readonly isWorkingTreeSelected: boolean
+  readonly onWorkingTreeSelected: () => void
+  readonly onCommitSelected: () => void
 }
 interface ICompareSidebarState {
   /**
@@ -164,7 +168,7 @@ export class CompareSidebar extends React.Component<
     const placeholderText = getPlaceholderText(this.props.compareState)
 
     return (
-      <div id="compare-view" role="tabpanel" aria-labelledby="history-tab">
+      <div id="compare-view" role="region" aria-label="Repository timeline">
         <div className="compare-form">
           <FancyTextBox
             ariaLabel="Branch filter"
@@ -245,7 +249,9 @@ export class CompareSidebar extends React.Component<
         isLocalRepository={this.props.isLocalRepository}
         commitLookup={this.props.commitLookup}
         commitSHAs={commitSHAs}
-        selectedSHAs={this.props.selectedCommitShas}
+        selectedSHAs={
+          this.props.isWorkingTreeSelected ? [] : this.props.selectedCommitShas
+        }
         shasToHighlight={this.props.shasToHighlight}
         localCommitSHAs={this.props.localCommitSHAs}
         canResetToCommits={formState.kind === HistoryTabMode.History}
@@ -287,6 +293,12 @@ export class CompareSidebar extends React.Component<
         keyboardReorderData={this.state.keyboardReorderData}
         accounts={this.props.accounts}
         preferAbsoluteDates={this.props.preferAbsoluteDates}
+        showCommitGraph={formState.kind === HistoryTabMode.History}
+        branches={this.props.compareState.branches}
+        currentBranch={this.props.currentBranch}
+        uncommittedChangesCount={this.props.uncommittedChangesCount}
+        isWorkingTreeSelected={this.props.isWorkingTreeSelected}
+        onWorkingTreeSelected={this.props.onWorkingTreeSelected}
       />
     )
   }
@@ -502,6 +514,10 @@ export class CompareSidebar extends React.Component<
     commits: ReadonlyArray<Commit>,
     isContiguous: boolean
   ) => {
+    if (commits.length > 0) {
+      this.props.onCommitSelected()
+    }
+
     this.props.dispatcher.changeCommitSelection(
       this.props.repository,
       commits.map(c => c.sha),

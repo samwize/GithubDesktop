@@ -6,10 +6,8 @@ import { UiView } from './ui-view'
 import { Changes, ChangesSidebar } from './changes'
 import { NoChanges } from './changes/no-changes'
 import { MultipleSelection } from './changes/multiple-selection'
-import { FilesChangedBadge } from './changes/files-changed-badge'
 import { SelectedCommits, CompareSidebar } from './history'
 import { Resizable } from './resizable'
-import { TabBar } from './tab-bar'
 import {
   IRepositoryState,
   RepositorySectionTab,
@@ -148,18 +146,10 @@ interface IRepositoryViewState {
   readonly compareListScrollTop: number
 }
 
-const enum Tab {
-  Changes = 0,
-  History = 1,
-}
-
 export class RepositoryView extends React.Component<
   IRepositoryViewProps,
   IRepositoryViewState
 > {
-  private previousSection: RepositorySectionTab =
-    this.props.state.selectedSection
-
   // Flag to force the app to use the scroll position in the state the next time
   // the Compare list is rendered.
   private forceCompareListScrollTop: boolean = false
@@ -203,37 +193,6 @@ export class RepositoryView extends React.Component<
     this.setState({ compareListScrollTop: scrollTop })
   }
 
-  private renderChangesBadge(): JSX.Element | null {
-    const filesChangedCount =
-      this.props.state.changesState.workingDirectory.files.length
-
-    if (filesChangedCount <= 0) {
-      return null
-    }
-
-    return <FilesChangedBadge filesChangedCount={filesChangedCount} />
-  }
-
-  private renderTabs(): JSX.Element {
-    const selectedTab =
-      this.props.state.selectedSection === RepositorySectionTab.Changes
-        ? Tab.Changes
-        : Tab.History
-
-    return (
-      <TabBar selectedIndex={selectedTab} onTabClicked={this.onTabClicked}>
-        <span className="with-indicator" id="changes-tab">
-          <span>Changes</span>
-          {this.renderChangesBadge()}
-        </span>
-
-        <div className="with-indicator" id="history-tab">
-          <span>History</span>
-        </div>
-      </TabBar>
-    )
-  }
-
   private onShowCommitProgress = () => {
     if (!this.props.state.subscribeToCommitOutput) {
       return
@@ -245,7 +204,7 @@ export class RepositoryView extends React.Component<
     })
   }
 
-  private renderChangesSidebar(): JSX.Element {
+  private renderChangesSidebar(availableWidth: number): JSX.Element {
     const tip = this.props.state.branchesState.tip
 
     let branchName: string | null = null
@@ -263,15 +222,6 @@ export class RepositoryView extends React.Component<
       (mostRecentLocalCommitSHA
         ? this.props.state.commitLookup.get(mostRecentLocalCommitSHA)
         : null) || null
-
-    // -1 Because of right hand side border
-    const availableWidth = clamp(this.props.sidebarWidth) - 1
-
-    const scrollTop =
-      this.previousSection === RepositorySectionTab.History
-        ? this.state.changesListScrollTop
-        : undefined
-    this.previousSection = RepositorySectionTab.Changes
 
     return (
       <ChangesSidebar
@@ -313,7 +263,7 @@ export class RepositoryView extends React.Component<
         externalEditorLabel={this.props.externalEditorLabel}
         onOpenInExternalEditor={this.props.onOpenInExternalEditor}
         onChangesListScrolled={this.onChangesListScrolled}
-        changesListScrollTop={scrollTop}
+        changesListScrollTop={this.state.changesListScrollTop}
         shouldNudgeToCommit={
           this.props.currentTutorialStep === TutorialStep.MakeCommit
         }
@@ -344,12 +294,9 @@ export class RepositoryView extends React.Component<
     } = state
     const { tip } = branchesState
     const currentBranch = tip.kind === TipState.Valid ? tip.branch : null
-    const scrollTop =
-      this.forceCompareListScrollTop ||
-      this.previousSection === RepositorySectionTab.Changes
-        ? this.state.compareListScrollTop
-        : undefined
-    this.previousSection = RepositorySectionTab.History
+    const scrollTop = this.forceCompareListScrollTop
+      ? this.state.compareListScrollTop
+      : undefined
     this.forceCompareListScrollTop = false
 
     return (
@@ -380,20 +327,38 @@ export class RepositoryView extends React.Component<
         }
         accounts={this.props.accounts}
         preferAbsoluteDates={this.props.preferAbsoluteDates}
+        uncommittedChangesCount={
+          state.changesState.workingDirectory.files.length
+        }
+        isWorkingTreeSelected={
+          state.selectedSection === RepositorySectionTab.Changes
+        }
+        onWorkingTreeSelected={this.onWorkingTreeSelected}
+        onCommitSelected={this.onCommitSelected}
       />
     )
   }
 
-  private renderSidebarContents(): JSX.Element {
-    const selectedSection = this.props.state.selectedSection
+  private onWorkingTreeSelected = () => {
+    this.props.dispatcher.changeRepositorySection(
+      this.props.repository,
+      RepositorySectionTab.Changes
+    )
+  }
 
-    if (selectedSection === RepositorySectionTab.Changes) {
-      return this.renderChangesSidebar()
-    } else if (selectedSection === RepositorySectionTab.History) {
-      return this.renderCompareSidebar()
-    } else {
-      return assertNever(selectedSection, 'Unknown repository section')
+  private onCommitSelected = () => {
+    if (this.props.state.selectedSection === RepositorySectionTab.History) {
+      return
     }
+
+    this.props.dispatcher.changeRepositorySection(
+      this.props.repository,
+      RepositorySectionTab.History
+    )
+  }
+
+  private renderSidebarContents(): JSX.Element {
+    return this.renderCompareSidebar()
   }
 
   private handleSidebarWidthReset = () => {
@@ -416,7 +381,6 @@ export class RepositoryView extends React.Component<
           onResize={this.handleSidebarResize}
           description="Repository sidebar"
         >
-          {this.renderTabs()}
           {this.renderSidebarContents()}
         </Resizable>
       </FocusContainer>
@@ -424,10 +388,7 @@ export class RepositoryView extends React.Component<
   }
 
   private onSidebarFocusWithinChanged = (sidebarHasFocusWithin: boolean) => {
-    if (
-      sidebarHasFocusWithin === false &&
-      this.props.state.selectedSection === RepositorySectionTab.History
-    ) {
+    if (sidebarHasFocusWithin === false) {
       this.props.dispatcher.updateCompareForm(this.props.repository, {
         showBranchList: false,
       })
@@ -631,10 +592,39 @@ export class RepositoryView extends React.Component<
     this.props.dispatcher.changeImageDiffType(imageDiffType)
   }
 
+  private handleWorkingTreeWidthReset = () => {
+    this.props.dispatcher.resetCommitSummaryWidth()
+  }
+
+  private handleWorkingTreeWidthResize = (width: number) => {
+    this.props.dispatcher.setCommitSummaryWidth(width)
+  }
+
+  private renderContentForWorkingTree(): JSX.Element {
+    const { commitSummaryWidth } = this.props
+    const availableWidth = clamp(commitSummaryWidth) - 1
+
+    return (
+      <div id="working-tree" className="commit-details">
+        <Resizable
+          width={commitSummaryWidth.value}
+          minimumWidth={commitSummaryWidth.min}
+          maximumWidth={commitSummaryWidth.max}
+          onResize={this.handleWorkingTreeWidthResize}
+          onReset={this.handleWorkingTreeWidthReset}
+          description="Working tree file list"
+        >
+          {this.renderChangesSidebar(availableWidth)}
+        </Resizable>
+        {this.renderContentForChanges()}
+      </div>
+    )
+  }
+
   private renderContent(): JSX.Element | null {
     const selectedSection = this.props.state.selectedSection
     if (selectedSection === RepositorySectionTab.Changes) {
-      return this.renderContentForChanges()
+      return this.renderContentForWorkingTree()
     } else if (selectedSection === RepositorySectionTab.History) {
       return this.renderContentForHistory()
     } else {
@@ -693,9 +683,7 @@ export class RepositoryView extends React.Component<
       return
     }
 
-    // Toggle tab selection on Ctrl+Tab. Note that we don't care
-    // about the shift key here, we can get away with that as long
-    // as there's only two tabs.
+    // Toggle between the working tree and commit details on Ctrl+Tab.
     if (event.ctrlKey && event.key === 'Tab') {
       this.changeTab()
       event.preventDefault()
@@ -712,23 +700,6 @@ export class RepositoryView extends React.Component<
       this.props.repository,
       section
     )
-  }
-
-  private onTabClicked = (tab: Tab) => {
-    const section =
-      tab === Tab.History
-        ? RepositorySectionTab.History
-        : RepositorySectionTab.Changes
-
-    this.props.dispatcher.changeRepositorySection(
-      this.props.repository,
-      section
-    )
-    if (!!section) {
-      this.props.dispatcher.updateCompareForm(this.props.repository, {
-        showBranchList: false,
-      })
-    }
   }
 
   private maybeRenderTutorialPanel(): JSX.Element | null {
