@@ -385,6 +385,10 @@ export class AddExistingRepository extends React.Component<
 
     const type = await this.validatePath(path)
 
+    if (this.state.path !== path) {
+      return
+    }
+
     if (type.kind !== 'regular') {
       if (type.kind === 'missing') {
         const repositories = await this.findRepositories(path)

@@ -33,14 +33,55 @@ function toDispatcher(dispatcher: TestDispatcher): Dispatcher {
   return dispatcher as unknown as Dispatcher
 }
 
+async function stubIpcSend() {
+  const electron = await import('electron')
+  const previousSend = electron.ipcRenderer.send
+  electron.ipcRenderer.send = () => {}
+  restoreIpcSend = () => {
+    electron.ipcRenderer.send = previousSend
+  }
+}
+
 describe('AddExistingRepository', () => {
+  it('ignores validation results after the path changes', async t => {
+    await stubIpcSend()
+
+    const parentPath = await createTempDirectory(t)
+    const otherPath = await createTempDirectory(t)
+    await git(['init', 'alpha'], parentPath, '')
+
+    const repositoryDialogRef = React.createRef<AddExistingRepository>()
+
+    render(
+      <AddExistingRepository
+        ref={repositoryDialogRef}
+        dispatcher={toDispatcher(new TestDispatcher())}
+        path={parentPath}
+        onDismissed={() => {}}
+      />
+    )
+
+    const addRepository = (
+      repositoryDialogRef.current as unknown as {
+        addRepository: () => Promise<void>
+      }
+    ).addRepository
+    const addPromise = addRepository()
+
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Local Path', hidden: true }),
+      { target: { value: otherPath } }
+    )
+    await addPromise
+
+    assert.equal(
+      repositoryDialogRef.current?.state.isFindingRepositories,
+      false
+    )
+  })
+
   it('selects immediate child repositories before adding them', async t => {
-    const electron = await import('electron')
-    const previousSend = electron.ipcRenderer.send
-    electron.ipcRenderer.send = () => {}
-    restoreIpcSend = () => {
-      electron.ipcRenderer.send = previousSend
-    }
+    await stubIpcSend()
 
     const parentPath = await createTempDirectory(t)
     await Promise.all([

@@ -38,31 +38,36 @@ export async function findRepositoriesInDirectory(
       .map(entry =>
         limit(async () => {
           const path = Path.resolve(directory, entry.name)
-          const type = await getRepositoryType(path)
+          try {
+            const type = await getRepositoryType(path)
 
-          if (
-            type.kind !== 'regular' ||
-            !pathsMatch(path, type.topLevelWorkingDirectory)
-          ) {
+            if (
+              type.kind !== 'regular' ||
+              !pathsMatch(path, type.topLevelWorkingDirectory)
+            ) {
+              return null
+            }
+
+            const commonGitDirectoryResult = await git(
+              ['rev-parse', '--git-common-dir'],
+              path,
+              'findRepositoriesInDirectory'
+            )
+            const commonGitDirectory = Path.resolve(
+              path,
+              commonGitDirectoryResult.stdout.trim()
+            )
+            if (!pathsMatch(type.gitDir, commonGitDirectory)) {
+              return null
+            }
+
+            return {
+              name: entry.name,
+              path: type.topLevelWorkingDirectory,
+            }
+          } catch (error) {
+            log.warn(`Could not inspect repository at '${path}'`, error)
             return null
-          }
-
-          const commonGitDirectoryResult = await git(
-            ['rev-parse', '--git-common-dir'],
-            path,
-            'findRepositoriesInDirectory'
-          )
-          const commonGitDirectory = Path.resolve(
-            path,
-            commonGitDirectoryResult.stdout.trim()
-          )
-          if (!pathsMatch(type.gitDir, commonGitDirectory)) {
-            return null
-          }
-
-          return {
-            name: entry.name,
-            path: type.topLevelWorkingDirectory,
           }
         })
       )
