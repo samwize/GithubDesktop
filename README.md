@@ -11,6 +11,10 @@ So I stopped waiting.
 
 ## What this fork fixes
 
+- Open multiple repositories in independent windows.
+- Work from one unified working tree and commit timeline.
+- Add several local repositories at once by choosing their parent folder.
+
 ### 1. One project, one window
 
 Open **File → New Window** or press `Cmd` + `Ctrl` + `N` on macOS (`Ctrl` +

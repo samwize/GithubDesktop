@@ -633,7 +633,34 @@ dialog {
   }
 
   &#add-existing-repository {
-    width: 400px;
+    width: 480px;
+
+    .found-repositories {
+      margin-top: var(--spacing-double);
+    }
+
+    .found-repositories-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: var(--spacing);
+    }
+
+    .found-repositories-actions {
+      display: flex;
+      gap: var(--spacing);
+      white-space: nowrap;
+    }
+
+    .found-repositories-list {
+      border: var(--base-border);
+      max-height: 220px;
+      overflow-y: auto;
+      padding: var(--spacing);
+
+      .checkbox-component:not(:last-child) {
+        margin-bottom: var(--spacing);
+      }
+    }
   }
 
   &#initialize-lfs {
