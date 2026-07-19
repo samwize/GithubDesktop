@@ -44,13 +44,14 @@ export class AppWindow {
   private quittingEvenIfUpdating = false
 
   public constructor(
-    restoreWindowState: boolean,
+    windowStateFile: string,
     private readonly shouldHideOnClose: () => boolean,
     private readonly initialRepositoryPath: string | null
   ) {
     const savedWindowState = windowStateKeeper({
       defaultWidth: this.minWidth,
       defaultHeight: this.minHeight,
+      file: windowStateFile,
       maximize: false,
     })
 
@@ -74,7 +75,7 @@ export class AppWindow {
       acceptFirstMouse: true,
     }
 
-    if (restoreWindowState) {
+    if (savedWindowState.x !== undefined && savedWindowState.y !== undefined) {
       windowOptions.x = savedWindowState.x
       windowOptions.y = savedWindowState.y
     }
@@ -90,10 +91,8 @@ export class AppWindow {
     this.window = new BrowserWindow(windowOptions)
     addTrustedIPCSender(this.window.webContents)
 
-    if (restoreWindowState) {
-      savedWindowState.manage(this.window)
-      this.shouldMaximizeOnShow = savedWindowState.isMaximized
-    }
+    savedWindowState.manage(this.window)
+    this.shouldMaximizeOnShow = savedWindowState.isMaximized
 
     this.window.on('close', e => {
       // On macOS, closing the window doesn't mean the app is quitting. If the
