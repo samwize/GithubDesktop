@@ -16,6 +16,11 @@ import { showOpenDialog } from '../main-process-proxy'
 import { Ref } from '../lib/ref'
 import { InputError } from '../lib/input-description/input-error'
 import { IAccessibleMessage } from '../../models/accessible-message'
+import { Checkbox, CheckboxValue } from '../lib/checkbox'
+import {
+  findRepositoriesInDirectory,
+  IFoundRepository,
+} from './find-repositories-in-directory'
 
 interface IAddExistingRepositoryProps {
   readonly dispatcher: Dispatcher
@@ -43,6 +48,34 @@ interface IAddExistingRepositoryState {
   readonly isRepositoryUnsafe: boolean
   readonly repositoryUnsafePath?: string
   readonly isTrustingRepository: boolean
+  readonly isFindingRepositories: boolean
+  readonly foundRepositories: ReadonlyArray<IFoundRepository>
+  readonly selectedRepositoryPaths: ReadonlySet<string>
+}
+
+interface IFoundRepositoryCheckboxProps {
+  readonly repository: IFoundRepository
+  readonly checked: boolean
+  readonly onSelectionChanged: (path: string, checked: boolean) => void
+}
+
+class FoundRepositoryCheckbox extends React.Component<IFoundRepositoryCheckboxProps> {
+  private onChange = (event: React.FormEvent<HTMLInputElement>) => {
+    this.props.onSelectionChanged(
+      this.props.repository.path,
+      event.currentTarget.checked
+    )
+  }
+
+  public render() {
+    return (
+      <Checkbox
+        label={this.props.repository.name}
+        value={this.props.checked ? CheckboxValue.On : CheckboxValue.Off}
+        onChange={this.onChange}
+      />
+    )
+  }
 }
 
 /** The component for adding an existing local repository. */
@@ -63,6 +96,9 @@ export class AddExistingRepository extends React.Component<
       isRepositoryBare: false,
       isRepositoryUnsafe: false,
       isTrustingRepository: false,
+      isFindingRepositories: false,
+      foundRepositories: [],
+      selectedRepositoryPaths: new Set(),
     }
   }
 
@@ -76,17 +112,27 @@ export class AddExistingRepository extends React.Component<
     this.setState({ isTrustingRepository: false })
   }
 
-  private async updatePath(path: string) {
-    this.setState({ path })
+  private updatePath(path: string) {
+    this.setState({
+      path,
+      isRepositoryBare: false,
+      isRepositoryUnsafe: false,
+      showNonGitRepositoryWarning: false,
+      repositoryUnsafePath: undefined,
+      foundRepositories: [],
+      selectedRepositoryPaths: new Set(),
+    })
   }
 
-  private async validatePath(path: string): Promise<boolean> {
+  private async validatePath(path: string) {
     if (path.length === 0) {
       this.setState({
         isRepositoryBare: false,
+        isRepositoryUnsafe: false,
         showNonGitRepositoryWarning: false,
+        repositoryUnsafePath: undefined,
       })
-      return false
+      return { kind: 'missing' } as const
     }
 
     const type = await getRepositoryType(path)
@@ -108,7 +154,7 @@ export class AddExistingRepository extends React.Component<
         : null
     )
 
-    return path.length > 0 && isRepository && !isRepositoryBare
+    return type
   }
 
   private buildBareRepositoryError() {
@@ -219,6 +265,42 @@ export class AddExistingRepository extends React.Component<
     )
   }
 
+  private renderFoundRepositories() {
+    const { foundRepositories, selectedRepositoryPaths } = this.state
+
+    if (foundRepositories.length === 0) {
+      return null
+    }
+
+    return (
+      <div className="found-repositories" aria-live="polite">
+        <div className="found-repositories-header">
+          <span>
+            {foundRepositories.length} repositories found in this folder
+          </span>
+          <div className="found-repositories-actions">
+            <LinkButton onClick={this.selectAllRepositories}>
+              Select all
+            </LinkButton>
+            <LinkButton onClick={this.deselectAllRepositories}>
+              Deselect all
+            </LinkButton>
+          </div>
+        </div>
+        <div className="found-repositories-list">
+          {foundRepositories.map(repository => (
+            <FoundRepositoryCheckbox
+              key={repository.path}
+              repository={repository}
+              checked={selectedRepositoryPaths.has(repository.path)}
+              onSelectionChanged={this.onRepositorySelectionChanged}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   public render() {
     return (
       <Dialog
@@ -226,7 +308,12 @@ export class AddExistingRepository extends React.Component<
         title={__DARWIN__ ? 'Add Local Repository' : 'Add local repository'}
         onSubmit={this.addRepository}
         onDismissed={this.props.onDismissed}
-        loading={this.state.isTrustingRepository}
+        disabled={
+          this.state.isTrustingRepository || this.state.isFindingRepositories
+        }
+        loading={
+          this.state.isTrustingRepository || this.state.isFindingRepositories
+        }
       >
         <DialogContent>
           <Row>
@@ -241,18 +328,23 @@ export class AddExistingRepository extends React.Component<
             <Button onClick={this.showFilePicker}>Choose…</Button>
           </Row>
           {this.renderErrors()}
+          {this.renderFoundRepositories()}
         </DialogContent>
 
         <DialogFooter>
           <OkCancelButtonGroup
-            okButtonText={__DARWIN__ ? 'Add Repository' : 'Add repository'}
+            okButtonText={this.getAddButtonText()}
+            okButtonDisabled={
+              this.state.foundRepositories.length > 0 &&
+              this.state.selectedRepositoryPaths.size === 0
+            }
           />
         </DialogFooter>
       </Dialog>
     )
   }
 
-  private onPathChanged = async (path: string) => {
+  private onPathChanged = (path: string) => {
     if (this.state.path !== path) {
       this.updatePath(path)
     }
@@ -268,6 +360,7 @@ export class AddExistingRepository extends React.Component<
     }
 
     this.updatePath(path)
+    await this.findRepositories(path)
   }
 
   private resolvedPath(path: string): string {
@@ -275,25 +368,123 @@ export class AddExistingRepository extends React.Component<
   }
 
   private addRepository = async () => {
-    const { path } = this.state
-    const isValidPath = await this.validatePath(path)
+    const { foundRepositories, path, selectedRepositoryPaths } = this.state
 
-    if (!isValidPath) {
+    if (foundRepositories.length > 0) {
+      const paths = foundRepositories
+        .filter(repository => selectedRepositoryPaths.has(repository.path))
+        .map(repository => repository.path)
+
+      if (paths.length === 0) {
+        return
+      }
+
+      await this.addRepositories(paths)
+      return
+    }
+
+    const type = await this.validatePath(path)
+
+    if (this.state.path !== path) {
+      return
+    }
+
+    if (type.kind !== 'regular') {
+      if (type.kind === 'missing') {
+        const repositories = await this.findRepositories(path)
+        if (repositories.length > 0) {
+          return
+        }
+      }
+
       this.pathTextBoxRef.current?.focus()
       return
     }
 
+    await this.addRepositories([this.resolvedPath(path)])
+  }
+
+  private addRepositories = async (paths: ReadonlyArray<string>) => {
     this.props.onDismissed()
     const { dispatcher } = this.props
 
-    const resolvedPath = this.resolvedPath(path)
-    const repositories = await dispatcher.addRepositories([resolvedPath])
+    const repositories = await dispatcher.addRepositories(paths)
 
     if (repositories.length > 0) {
       dispatcher.closeFoldout(FoldoutType.Repository)
       dispatcher.selectRepository(repositories[0])
       dispatcher.recordAddExistingRepository()
     }
+  }
+
+  private findRepositories = async (
+    path: string
+  ): Promise<ReadonlyArray<IFoundRepository>> => {
+    if (path.length === 0) {
+      return []
+    }
+
+    this.setState({ isFindingRepositories: true })
+    const repositories = await findRepositoriesInDirectory(
+      this.resolvedPath(path)
+    )
+
+    this.setState(state =>
+      state.path === path
+        ? {
+            isFindingRepositories: false,
+            foundRepositories: repositories,
+            selectedRepositoryPaths: new Set(
+              repositories.map(repository => repository.path)
+            ),
+            showNonGitRepositoryWarning:
+              repositories.length > 0
+                ? false
+                : state.showNonGitRepositoryWarning,
+          }
+        : null
+    )
+
+    return repositories
+  }
+
+  private onRepositorySelectionChanged = (path: string, checked: boolean) => {
+    this.setState(state => {
+      const selectedRepositoryPaths = new Set(state.selectedRepositoryPaths)
+
+      if (checked) {
+        selectedRepositoryPaths.add(path)
+      } else {
+        selectedRepositoryPaths.delete(path)
+      }
+
+      return { selectedRepositoryPaths }
+    })
+  }
+
+  private selectAllRepositories = () => {
+    this.setState(state => ({
+      selectedRepositoryPaths: new Set(
+        state.foundRepositories.map(repository => repository.path)
+      ),
+    }))
+  }
+
+  private deselectAllRepositories = () => {
+    this.setState({ selectedRepositoryPaths: new Set() })
+  }
+
+  private getAddButtonText() {
+    const count = this.state.selectedRepositoryPaths.size
+
+    if (this.state.foundRepositories.length === 0) {
+      return __DARWIN__ ? 'Add Repository' : 'Add repository'
+    }
+
+    const repositoryLabel = count === 1 ? 'Repository' : 'Repositories'
+    return `Add ${count} ${
+      __DARWIN__ ? repositoryLabel : repositoryLabel.toLowerCase()
+    }`
   }
 
   private onCreateRepositoryClicked = () => {

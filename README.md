@@ -1,6 +1,6 @@
-# GitPub: many repos, many windows
+# GitPub: A fork to support multi-window and more
 
-GitHub Desktop is good. Its one-window rule is not.
+GitHub Desktop app is good, but its one-window rule is not.
 
 [Multi-window support has been requested since 2017](https://github.com/desktop/desktop/issues/3606).
 More than 100 comments later, the team have not yet work on it.
@@ -9,7 +9,11 @@ exactly zero interest in playing repository musical chairs all day.
 
 So I stopped waiting.
 
-## What this fork fixes
+## Features this fork added
+
+1. Open multiple repositories in independent windows.
+2. Commits and branch timeline.
+3. Add several local repositories at once by choosing their parent folder.
 
 ### 1. One project, one window
 
