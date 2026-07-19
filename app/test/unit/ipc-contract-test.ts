@@ -102,6 +102,7 @@ describe('IPC channel contract', () => {
     'check-for-updates',
     'get-current-window-state',
     'get-current-window-zoom-factor',
+    'get-other-window-repository-paths',
     'resolve-proxy',
     'show-save-dialog',
     'show-open-dialog',

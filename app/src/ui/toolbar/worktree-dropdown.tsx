@@ -95,7 +95,9 @@ export class WorktreeDropdown extends React.Component<
     await new Promise<void>(resolve => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
     })
-    await this.props.dispatcher.removeCleanWorktrees(this.props.repository)
+    await this.props.dispatcher.requestRemoveCleanWorktrees(
+      this.props.repository
+    )
     this.setState({ isRemovingCleanWorktrees: false })
   }
 

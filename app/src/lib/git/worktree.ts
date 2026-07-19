@@ -125,6 +125,7 @@ export async function isWorktreeClean(worktreePath: string): Promise<boolean> {
       '--porcelain',
       '-z',
       '--untracked-files=normal',
+      '--ignored=matching',
     ],
     worktreePath,
     'isWorktreeClean'

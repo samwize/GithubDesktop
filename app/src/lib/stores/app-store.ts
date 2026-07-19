@@ -117,6 +117,7 @@ import {
   quitApp,
   sendCancelQuittingSync,
   showOpenDialog,
+  getOtherWindowRepositoryPaths,
   sendRepositoryIndicatorUpdate,
   notifyConfirmationPreferencesChanged,
   notifyNotificationsSettingsChanged,
@@ -6184,13 +6185,29 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /** This shouldn't be called directly. See 'Dispatcher'. */
+  public async _requestRemoveCleanWorktrees(
+    repository: Repository
+  ): Promise<void> {
+    if (this.confirmWorktreeRemoval) {
+      this._closeFoldout(FoldoutType.Worktree)
+      this._showPopup({
+        type: PopupType.RemoveCleanWorktrees,
+        repository,
+      })
+      return
+    }
+
+    await this._removeCleanWorktrees(repository)
+  }
+
+  /** This shouldn't be called directly. See 'Dispatcher'. */
   public async _removeCleanWorktrees(repository: Repository): Promise<void> {
     const worktrees = await listWorktrees(repository)
     const candidates = worktrees.filter(
       worktree => worktree.type === 'linked' && !worktree.isLocked
     )
 
-    const cleanWorktrees = (
+    let cleanWorktrees = (
       await Promise.all(
         candidates.map(async worktree => {
           try {
@@ -6202,6 +6219,23 @@ export class AppStore extends TypedBaseStore<IAppState> {
         })
       )
     ).filter((worktree): worktree is WorktreeEntry => worktree !== null)
+
+    if (cleanWorktrees.length === 0) {
+      return
+    }
+
+    const loadOtherWindowPaths = async () =>
+      new Set(
+        (await getOtherWindowRepositoryPaths()).map(path =>
+          this.normalizeRepositoryPath(path)
+        )
+      )
+
+    const otherWindowPaths = await loadOtherWindowPaths()
+    cleanWorktrees = cleanWorktrees.filter(
+      worktree =>
+        !otherWindowPaths.has(this.normalizeRepositoryPath(worktree.path))
+    )
 
     if (cleanWorktrees.length === 0) {
       return
@@ -6223,6 +6257,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
     let firstError: Error | null = null
 
     for (const worktree of cleanWorktrees) {
+      const latestOtherWindowPaths = await loadOtherWindowPaths()
+      if (
+        latestOtherWindowPaths.has(this.normalizeRepositoryPath(worktree.path))
+      ) {
+        continue
+      }
+
       try {
         await removeWorktree(repository.path, worktree.path)
         this.statsStore.increment('worktreeDeletedCount')

@@ -59,6 +59,7 @@ import { CLIAction } from '../lib/cli-action'
 import { IRepositoryIndicatorUpdate } from '../lib/ipc-shared'
 import { pathExists } from '../lib/path-exists'
 import {
+  getOtherWindowRepositoryPaths,
   readWindowRepositoryPaths,
   writeWindowRepositoryPaths,
 } from './window-repository-state'
@@ -799,6 +800,13 @@ app.on('ready', async () => {
 
   ipcMain.handle('get-current-window-zoom-factor', async event =>
     getWindowForSender(event.sender)?.getCurrentWindowZoomFactor()
+  )
+
+  ipcMain.handle('get-other-window-repository-paths', async event =>
+    getOtherWindowRepositoryPaths(
+      selectedRepositoryPaths,
+      getWindowForSender(event.sender)?.id
+    )
   )
 
   ipcMain.on('set-window-zoom-factor', (event, zoomFactor: number) =>

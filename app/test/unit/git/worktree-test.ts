@@ -346,5 +346,16 @@ describe('git/worktree', () => {
       await writeFile(Path.join(repo.path, 'untracked'), 'new')
       assert.strictEqual(await isWorktreeClean(repo.path), false)
     })
+
+    it('returns false for ignored files', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [{ path: '.gitignore', contents: '.env\n' }],
+      })
+
+      await writeFile(Path.join(repo.path, '.env'), 'SECRET=value')
+
+      assert.strictEqual(await isWorktreeClean(repo.path), false)
+    })
   })
 })
