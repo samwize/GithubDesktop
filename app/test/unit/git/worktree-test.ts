@@ -1,12 +1,13 @@
 import assert from 'node:assert'
 import * as Path from 'path'
-import { realpath, rm } from 'fs/promises'
+import { realpath, rm, writeFile } from 'fs/promises'
 import { describe, it } from 'node:test'
 import { exec } from 'dugite'
 import { setupEmptyRepository } from '../../helpers/repositories'
 import { makeCommit } from '../../helpers/repository-scaffolding'
 import {
   parseWorktreePorcelainOutput,
+  isWorktreeClean,
   listWorktrees,
   listWorktreesFromGitDir,
 } from '../../../src/lib/git'
@@ -319,6 +320,42 @@ describe('git/worktree', () => {
       assert(
         worktrees.some(wt => wt.path === resolvedWorktreePath && wt.isPrunable)
       )
+    })
+  })
+
+  describe('isWorktreeClean', () => {
+    it('returns true for a clean worktree', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [{ path: 'README', contents: 'hello' }],
+      })
+
+      assert.strictEqual(await isWorktreeClean(repo.path), true)
+    })
+
+    it('returns false for tracked and untracked changes', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [{ path: 'README', contents: 'hello' }],
+      })
+
+      await writeFile(Path.join(repo.path, 'README'), 'changed')
+      assert.strictEqual(await isWorktreeClean(repo.path), false)
+
+      await exec(['checkout', '--', 'README'], repo.path)
+      await writeFile(Path.join(repo.path, 'untracked'), 'new')
+      assert.strictEqual(await isWorktreeClean(repo.path), false)
+    })
+
+    it('returns false for ignored files', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [{ path: '.gitignore', contents: '.env\n' }],
+      })
+
+      await writeFile(Path.join(repo.path, '.env'), 'SECRET=value')
+
+      assert.strictEqual(await isWorktreeClean(repo.path), false)
     })
   })
 })

@@ -114,6 +114,7 @@ export enum PopupType {
   AddWorktree = 'AddWorktree',
   RenameWorktree = 'RenameWorktree',
   DeleteWorktree = 'DeleteWorktree',
+  RemoveCleanWorktrees = 'RemoveCleanWorktrees',
   EditCopilotBYOKProvider = 'EditCopilotBYOKProvider',
   EditCopilotBYOKModel = 'EditCopilotBYOKModel',
   ConfirmDeleteCopilotBYOKProvider = 'ConfirmDeleteCopilotBYOKProvider',
@@ -531,6 +532,10 @@ export type PopupDetail =
       type: PopupType.DeleteWorktree
       repository: Repository
       worktreePath: string
+    }
+  | {
+      type: PopupType.RemoveCleanWorktrees
+      repository: Repository
     }
   | {
       type: PopupType.DeleteWorktreeFailed

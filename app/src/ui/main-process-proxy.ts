@@ -184,6 +184,11 @@ export const getCurrentWindowZoomFactor = invokeProxy(
   0
 )
 
+export const getOtherWindowRepositoryPaths = invokeProxy(
+  'get-other-window-repository-paths',
+  0
+)
+
 /** Tell the main process that a modal dialog has opened */
 export const sendDialogDidOpen = sendProxy('dialog-did-open', 0)
 

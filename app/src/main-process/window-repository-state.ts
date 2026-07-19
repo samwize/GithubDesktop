@@ -3,6 +3,21 @@ import { join } from 'path'
 
 const FileName = 'window-repositories.json'
 
+export function getOtherWindowRepositoryPaths(
+  selectedRepositoryPaths: ReadonlyMap<number, string | null>,
+  currentWindowID: number | undefined
+): ReadonlyArray<string> {
+  const paths = new Array<string>()
+
+  for (const [windowID, path] of selectedRepositoryPaths) {
+    if (path !== null && windowID !== currentWindowID) {
+      paths.push(path)
+    }
+  }
+
+  return paths
+}
+
 export function readWindowRepositoryPaths(
   userDataPath: string
 ): ReadonlyArray<string> {

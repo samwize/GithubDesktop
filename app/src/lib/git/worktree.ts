@@ -117,6 +117,23 @@ export async function removeWorktree(
   await git(args, repositoryPath, 'removeWorktree')
 }
 
+export async function isWorktreeClean(worktreePath: string): Promise<boolean> {
+  const result = await git(
+    [
+      '--no-optional-locks',
+      'status',
+      '--porcelain',
+      '-z',
+      '--untracked-files=normal',
+      '--ignored=matching',
+    ],
+    worktreePath,
+    'isWorktreeClean'
+  )
+
+  return result.stdout.length === 0
+}
+
 export async function moveWorktree(
   repository: Repository,
   oldPath: string,

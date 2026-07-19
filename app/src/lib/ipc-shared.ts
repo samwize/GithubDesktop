@@ -140,6 +140,7 @@ export type RequestResponseChannels = {
   'check-for-updates': (url: string) => Promise<Error | undefined>
   'get-current-window-state': () => Promise<WindowState | undefined>
   'get-current-window-zoom-factor': () => Promise<number | undefined>
+  'get-other-window-repository-paths': () => Promise<ReadonlyArray<string>>
   'resolve-proxy': (url: string) => Promise<string>
   'show-save-dialog': (
     options: Electron.SaveDialogOptions

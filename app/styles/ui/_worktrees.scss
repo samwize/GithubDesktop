@@ -57,6 +57,29 @@
     flex-shrink: 0;
   }
 
+  .remove-clean-worktrees-row {
+    flex-shrink: 0;
+    padding: var(--spacing);
+    border-top: var(--base-border);
+  }
+
+  .remove-clean-worktrees-button {
+    width: 100%;
+    color: var(--button-text-color);
+    background: var(--error-color);
+    border-color: var(--error-color);
+
+    &:not([aria-disabled='true']):hover {
+      color: var(--button-text-color);
+      background: var(--dialog-error-color);
+      border-color: var(--dialog-error-color);
+    }
+
+    .octicon {
+      margin-right: var(--spacing-half);
+    }
+  }
+
   .no-items-found {
     padding: var(--spacing);
     text-align: center;

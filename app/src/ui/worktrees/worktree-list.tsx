@@ -8,6 +8,8 @@ import { Button } from '../lib/button'
 import { IMatches } from '../../lib/fuzzy-find'
 import { ClickSource } from '../lib/list'
 import memoizeOne from 'memoize-one'
+import { Octicon } from '../octicons'
+import * as octicons from '../octicons/octicons.generated'
 
 const RowHeight = 30
 
@@ -29,6 +31,8 @@ interface IWorktreeListProps {
   readonly filterText: string
   readonly canCreateNewWorktree: boolean
   readonly onCreateNewWorktree?: () => void
+  readonly onRemoveCleanWorktrees: () => void
+  readonly isRemovingCleanWorktrees: boolean
   readonly onWorktreeContextMenu?: (
     worktree: WorktreeEntry,
     event: React.MouseEvent<HTMLDivElement>
@@ -111,6 +115,31 @@ export class WorktreeList extends React.Component<IWorktreeListProps> {
     return <div className="no-items-found">No worktrees found</div>
   }
 
+  private renderRemoveCleanWorktreesButton() {
+    if (!this.props.worktrees.some(worktree => worktree.type === 'linked')) {
+      return null
+    }
+
+    const label = this.props.isRemovingCleanWorktrees
+      ? 'Removing…'
+      : __DARWIN__
+      ? 'Remove Clean Worktrees'
+      : 'Remove clean worktrees'
+
+    return (
+      <div className="remove-clean-worktrees-row">
+        <Button
+          className="remove-clean-worktrees-button"
+          onClick={this.props.onRemoveCleanWorktrees}
+          disabled={this.props.isRemovingCleanWorktrees}
+        >
+          <Octicon symbol={octicons.trash} />
+          {label}
+        </Button>
+      </div>
+    )
+  }
+
   private onItemClick = (item: IWorktreeListItem, source: ClickSource) => {
     if (this.props.onWorktreeClick) {
       this.props.onWorktreeClick(item.worktree, source)
@@ -130,21 +159,23 @@ export class WorktreeList extends React.Component<IWorktreeListProps> {
     const groups = this.getGroups(this.props.worktrees)
 
     return (
-      <SectionFilterList<IWorktreeListItem, WorktreeGroupIdentifier>
-        className="worktree-list"
-        rowHeight={RowHeight}
-        filterText={this.props.filterText}
-        onFilterTextChanged={this.props.onFilterTextChanged}
-        selectedItem={null}
-        renderItem={this.renderItem}
-        renderGroupHeader={this.renderGroupHeader}
-        onItemClick={this.onItemClick}
-        groups={groups}
-        invalidationProps={this.props.worktrees}
-        renderPostFilter={this.onRenderNewButton}
-        renderNoItems={this.onRenderNoItems}
-        onItemContextMenu={this.onItemContextMenu}
-      />
+      <div className="worktree-list">
+        <SectionFilterList<IWorktreeListItem, WorktreeGroupIdentifier>
+          rowHeight={RowHeight}
+          filterText={this.props.filterText}
+          onFilterTextChanged={this.props.onFilterTextChanged}
+          selectedItem={null}
+          renderItem={this.renderItem}
+          renderGroupHeader={this.renderGroupHeader}
+          onItemClick={this.onItemClick}
+          groups={groups}
+          invalidationProps={this.props.worktrees}
+          renderPostFilter={this.onRenderNewButton}
+          renderNoItems={this.onRenderNoItems}
+          onItemContextMenu={this.onItemContextMenu}
+        />
+        {this.renderRemoveCleanWorktreesButton()}
+      </div>
     )
   }
 }

@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
+  getOtherWindowRepositoryPaths,
   readWindowRepositoryPaths,
   writeWindowRepositoryPaths,
 } from '../../../src/main-process/window-repository-state'
@@ -16,6 +17,22 @@ describe('window repository state', () => {
       rmSync(directory, { recursive: true, force: true })
       directory = undefined
     }
+  })
+
+  it('returns repository paths selected by other windows', () => {
+    const paths = new Map<number, string | null>([
+      [1, '/one'],
+      [2, '/two'],
+      [3, '/one'],
+      [4, null],
+    ])
+
+    assert.deepEqual(getOtherWindowRepositoryPaths(paths, 1), ['/two', '/one'])
+    assert.deepEqual(getOtherWindowRepositoryPaths(paths, undefined), [
+      '/one',
+      '/two',
+      '/one',
+    ])
   })
 
   it('preserves one repository path per window', () => {
