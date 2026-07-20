@@ -10,7 +10,7 @@ import {
 } from '../../lib/app-state'
 import { CommitList } from './commit-list'
 import { Repository } from '../../models/repository'
-import { Branch } from '../../models/branch'
+import { Branch, IAheadBehind } from '../../models/branch'
 import { defaultErrorHandler, Dispatcher } from '../dispatcher'
 import { ThrottledScheduler } from '../lib/throttled-scheduler'
 import { BranchList } from '../branches'
@@ -45,6 +45,7 @@ interface ICompareSidebarProps {
   readonly askForConfirmationOnCheckoutCommit: boolean
   readonly dispatcher: Dispatcher
   readonly currentBranch: Branch | null
+  readonly aheadBehind: IAheadBehind | null
   readonly selectedCommitShas: ReadonlyArray<string>
   readonly onRevertCommit: (commit: Commit) => void
   readonly onAmendCommit: (commit: Commit, isLocalCommit: boolean) => void
@@ -296,6 +297,7 @@ export class CompareSidebar extends React.Component<
         showCommitGraph={formState.kind === HistoryTabMode.History}
         branches={this.props.compareState.branches}
         currentBranch={this.props.currentBranch}
+        aheadBehind={this.props.aheadBehind}
         uncommittedChangesCount={this.props.uncommittedChangesCount}
         isWorkingTreeSelected={this.props.isWorkingTreeSelected}
         onWorkingTreeSelected={this.props.onWorkingTreeSelected}

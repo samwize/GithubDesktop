@@ -1,4 +1,10 @@
-import { bundleID, companyName, productName, version } from './package.json'
+import {
+  buildNumber,
+  bundleID,
+  companyName,
+  productName,
+  version,
+} from './package.json'
 
 export function getProductName() {
   return process.env.NODE_ENV === 'development'
@@ -12,6 +18,10 @@ export function getCompanyName() {
 
 export function getVersion() {
   return version
+}
+
+export function getBuildNumber() {
+  return buildNumber
 }
 
 export function getBundleID() {

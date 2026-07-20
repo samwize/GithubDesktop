@@ -29,8 +29,8 @@ import { formatDate } from '../../lib/format-date'
 import { Avatar } from '../lib/avatar'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
-import { Branch } from '../../models/branch'
-import { buildCommitGraph } from './commit-graph-layout'
+import { Branch, IAheadBehind } from '../../models/branch'
+import { buildCommitGraph, getReachableCommitSHAs } from './commit-graph-layout'
 import { WorkingTreeGraph } from './commit-graph'
 
 const RowHeight = 50
@@ -191,6 +191,7 @@ interface ICommitListProps {
   readonly showCommitGraph?: boolean
   readonly branches?: ReadonlyArray<Branch>
   readonly currentBranch?: Branch | null
+  readonly aheadBehind?: IAheadBehind | null
   readonly uncommittedChangesCount?: number
   readonly isWorkingTreeSelected?: boolean
   readonly onWorkingTreeSelected?: () => void
@@ -229,6 +230,24 @@ export class CommitList extends React.Component<
         branches,
         currentBranch
       )
+  )
+  private currentBranchCommitSHAs = memoizeOne(
+    (
+      commitSHAs: ReadonlyArray<string>,
+      commitLookup: Map<string, Commit>,
+      currentBranch: Branch | null
+    ) => {
+      if (currentBranch === null) {
+        return commitSHAs
+      }
+
+      const commits = commitSHAs.flatMap(sha => {
+        const commit = commitLookup.get(sha)
+        return commit === undefined ? [] : [commit]
+      })
+      const reachable = getReachableCommitSHAs(commits, currentBranch.tip.sha)
+      return commitSHAs.filter(sha => reachable.has(sha))
+    }
   )
 
   private containerRef = React.createRef<HTMLDivElement>()
@@ -309,6 +328,11 @@ export class CommitList extends React.Component<
     }
 
     const isLocal = this.isLocalCommit(commit.sha)
+    const canRewrite =
+      this.isCommitOnCurrentBranch(commit.sha) &&
+      this.selectedCommits.every(selectedCommit =>
+        this.isCommitOnCurrentBranch(selectedCommit.sha)
+      )
     const unpushedTags = this.getUnpushedTags(commit)
 
     const showUnpushedIndicator =
@@ -329,6 +353,7 @@ export class CommitList extends React.Component<
         commit={commit}
         emoji={this.props.emoji}
         isDraggable={
+          canRewrite &&
           this.props.isMultiCommitOperationInProgress === false &&
           !this.inKeyboardReorderMode
         }
@@ -336,15 +361,19 @@ export class CommitList extends React.Component<
         selectedCommits={this.selectedCommits}
         onRenderCommitDragElement={this.onRenderCommitDragElement}
         onRemoveDragElement={this.props.onRemoveCommitDragElement}
-        disableSquashing={this.props.disableSquashing}
+        disableSquashing={this.props.disableSquashing || !canRewrite}
         accounts={this.props.accounts}
         preferAbsoluteDates={this.props.preferAbsoluteDates}
         commitGraphRow={commitGraph?.rows.get(commit.sha)}
         commitGraphLaneCount={commitGraph?.laneCount}
         connectCommitGraphFromTop={
-          row === 0 && this.props.showCommitGraph === true
+          row === 0 &&
+          this.props.showCommitGraph === true &&
+          (this.props.currentBranch == null ||
+            commit.sha === this.props.currentBranch.tip.sha)
         }
         currentBranchUpstream={this.props.currentBranch?.upstream}
+        aheadBehind={this.props.aheadBehind}
       />
     )
   }
@@ -399,13 +428,33 @@ export class CommitList extends React.Component<
     )
   }
 
-  private getLastRetainedCommitRef(indexes: ReadonlyArray<number>) {
+  private getCurrentBranchCommitSHAs() {
+    if (this.props.showCommitGraph !== true) {
+      return this.props.commitSHAs
+    }
+
+    return this.currentBranchCommitSHAs(
+      this.props.commitSHAs,
+      this.props.commitLookup,
+      this.props.currentBranch ?? null
+    )
+  }
+
+  private isCommitOnCurrentBranch(sha: string) {
+    return this.getCurrentBranchCommitSHAs().includes(sha)
+  }
+
+  private getLastRetainedCommitRef(commits: ReadonlyArray<Commit>) {
+    const currentBranchCommitSHAs = this.getCurrentBranchCommitSHAs()
+    const indexes = commits.map(commit =>
+      currentBranchCommitSHAs.indexOf(commit.sha)
+    )
     const maxIndex = Math.max(...indexes)
-    const lastIndex = this.props.commitSHAs.length - 1
+    const lastIndex = currentBranchCommitSHAs.length - 1
     /* If the commit is the first commit in the branch, you cannot reference it
     using the sha */
     const lastRetainedCommitRef =
-      maxIndex !== lastIndex ? `${this.props.commitSHAs[maxIndex]}^` : null
+      maxIndex !== lastIndex ? `${currentBranchCommitSHAs[maxIndex]}^` : null
     return lastRetainedCommitRef
   }
 
@@ -414,13 +463,10 @@ export class CommitList extends React.Component<
     squashOnto: Commit,
     isInvokedByContextMenu: boolean
   ) => {
-    const indexes = [...toSquash, squashOnto].map(v =>
-      this.props.commitSHAs.findIndex(sha => sha === v.sha)
-    )
     this.props.onSquash?.(
       toSquash,
       squashOnto,
-      this.getLastRetainedCommitRef(indexes),
+      this.getLastRetainedCommitRef([...toSquash, squashOnto]),
       isInvokedByContextMenu
     )
   }
@@ -820,18 +866,26 @@ export class CommitList extends React.Component<
     commit: Commit
   ): IMenuItem[] {
     const isLocal = this.isLocalCommit(commit.sha)
+    const currentBranchCommitSHAs = this.getCurrentBranchCommitSHAs()
+    const currentBranchRow = currentBranchCommitSHAs.indexOf(commit.sha)
+    const isCurrentTip =
+      this.props.currentBranch === undefined ||
+      this.props.currentBranch === null
+        ? row === 0
+        : commit.sha === this.props.currentBranch.tip.sha
 
     const canBeUndone =
-      this.props.canUndoCommits === true && isLocal && row === 0
-    const canBeAmended = this.props.canAmendCommits === true && row === 0
+      this.props.canUndoCommits === true && isLocal && isCurrentTip
+    const canBeAmended = this.props.canAmendCommits === true && isCurrentTip
     // The user can reset to any commit up to the first non-local one (included).
     // They cannot reset to the most recent commit... because they're already
     // in it.
     const isResettableCommit =
-      row > 0 && row <= this.props.localCommitSHAs.length
+      currentBranchRow > 0 &&
+      currentBranchRow <= this.props.localCommitSHAs.length
     const canBeResetTo =
       this.props.canResetToCommits === true && isResettableCommit
-    const canBeCheckedOut = row > 0 //Cannot checkout the current commit
+    const canBeCheckedOut = !isCurrentTip
 
     let viewOnGitHubLabel = 'View on GitHub'
     const gitHubRepository = this.props.gitHubRepository
@@ -887,7 +941,7 @@ export class CommitList extends React.Component<
       action: () => {
         this.props.onKeyboardReorder?.([commit])
       },
-      enabled: this.canReorder(),
+      enabled: this.canReorder([commit]),
     })
 
     items.push(
@@ -965,18 +1019,20 @@ export class CommitList extends React.Component<
     )
   }
 
-  private canReorder = () =>
+  private canReorder = (commits: ReadonlyArray<Commit>) =>
     this.props.onKeyboardReorder !== undefined &&
     this.props.disableReordering === false &&
-    this.props.isMultiCommitOperationInProgress === false
+    this.props.isMultiCommitOperationInProgress === false &&
+    commits.every(commit => this.isCommitOnCurrentBranch(commit.sha))
 
-  private canSquash(): boolean {
+  private canSquash(commits: ReadonlyArray<Commit>): boolean {
     const { onSquash, disableSquashing, isMultiCommitOperationInProgress } =
       this.props
     return (
       onSquash !== undefined &&
       disableSquashing === false &&
-      isMultiCommitOperationInProgress === false
+      isMultiCommitOperationInProgress === false &&
+      commits.every(commit => this.isCommitOnCurrentBranch(commit.sha))
     )
   }
 
@@ -1033,14 +1089,14 @@ export class CommitList extends React.Component<
           ? `Squash ${count} Commits…`
           : `Squash ${count} commits…`,
         action: () => this.onSquash(this.selectedCommits, commit, true),
-        enabled: this.canSquash(),
+        enabled: this.canSquash([...this.selectedCommits, commit]),
       },
       {
         label: __DARWIN__
           ? `Reorder ${count} Commits…`
           : `Reorder ${count} commits…`,
         action: () => this.props.onKeyboardReorder?.(this.selectedCommits),
-        enabled: this.canReorder(),
+        enabled: this.canReorder(this.selectedCommits),
       },
     ]
   }
@@ -1064,27 +1120,50 @@ export class CommitList extends React.Component<
       return
     }
 
+    const commits = data.commits.filter(
+      (commit): commit is Commit => commit !== null && commit !== undefined
+    )
+    if (
+      commits.length === 0 ||
+      commits.some(commit => !this.isCommitOnCurrentBranch(commit.sha))
+    ) {
+      return
+    }
+
     // The base commit index will be in row - 1, because row is the position
     // where the new item should be inserted, and commits have a reverse order
     // (newer commits are in lower row values) in the list.
-    const baseCommitIndex = row === 0 ? null : row - 1
+    const baseCommitListIndex = row === 0 ? null : row - 1
 
     if (
       this.props.commitSHAs.length === 0 ||
-      (baseCommitIndex !== null &&
-        baseCommitIndex > this.props.commitSHAs.length)
+      (baseCommitListIndex !== null &&
+        baseCommitListIndex > this.props.commitSHAs.length)
     ) {
       return
     }
 
     const baseCommitSHA =
-      baseCommitIndex === null ? null : this.props.commitSHAs[baseCommitIndex]
+      baseCommitListIndex === null
+        ? null
+        : this.props.commitSHAs[baseCommitListIndex]
     const baseCommit =
       baseCommitSHA !== null ? this.props.commitLookup.get(baseCommitSHA) : null
+    if (
+      baseCommit !== null &&
+      baseCommit !== undefined &&
+      !this.isCommitOnCurrentBranch(baseCommit.sha)
+    ) {
+      return
+    }
 
-    const commitIndexes = data.commits
-      .filter((v): v is Commit => v !== null && v !== undefined)
-      .map(v => this.props.commitSHAs.findIndex(sha => sha === v.sha))
+    const currentBranchCommitSHAs = this.getCurrentBranchCommitSHAs()
+    const baseCommitIndex =
+      baseCommit === null || baseCommit === undefined
+        ? null
+        : currentBranchCommitSHAs.indexOf(baseCommit.sha)
+    const commitIndexes = commits
+      .map(commit => currentBranchCommitSHAs.indexOf(commit.sha))
       .sort() // Required to check if they're contiguous
 
     // Check if values in commit indexes are contiguous
@@ -1119,14 +1198,14 @@ export class CommitList extends React.Component<
       }
     }
 
-    const allIndexes = commitIndexes.concat(
-      baseCommitIndex !== null ? [baseCommitIndex] : []
-    )
-
     this.props.onDropCommitInsertion(
       baseCommit ?? null,
-      data.commits,
-      this.getLastRetainedCommitRef(allIndexes)
+      commits,
+      this.getLastRetainedCommitRef(
+        baseCommit === null || baseCommit === undefined
+          ? commits
+          : [...commits, baseCommit]
+      )
     )
   }
 }

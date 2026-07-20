@@ -49,6 +49,9 @@ Your current branch is impossible to miss. Other branches and merges draw
 themselves as lines, so you can see where the work came from instead of
 reconstructing it in your head.
 
+Tracked remote branches such as `origin/main` appear on the same graph with
+ahead and behind status, making divergence visible at a glance.
+
 ![GitPub showing the unified working tree and commit timeline for the GithubDesktop repository](./docs/assets/gitpub-unified-timeline.jpg)
 
 No mode switch. No context reset. Just where the repository is now, and exactly

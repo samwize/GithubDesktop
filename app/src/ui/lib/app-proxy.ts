@@ -31,6 +31,10 @@ export function getVersion(): string {
   return __APP_VERSION__
 }
 
+export function getBuildNumber(): string {
+  return __APP_BUILD_NUMBER__
+}
+
 /**
  * Get the name of the app.
  */

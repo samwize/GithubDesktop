@@ -297,7 +297,7 @@ test.describe('Auto-update', () => {
       const versionText = await aboutDialog
         .locator('.selectable-text')
         .textContent()
-      expect(versionText).toMatch(/Version \d+\.\d+\.\d+/)
+      expect(versionText).toMatch(/Version \d+\.\d+\.\d+ \(Build \d+, .+\)/)
     })
 
     test('shows up-to-date status after no-update check', async ({

@@ -33,11 +33,50 @@ describe('GitStore', () => {
       const repo = new Repository(path, -1, null, false)
       const gitStore = new GitStore(repo, shell, new TestStatsStore())
 
-      const commits = await gitStore.loadCommitBatch('HEAD', 0)
+      const commitBatch = await gitStore.loadCommitBatch('HEAD', 0)
 
-      assert(commits !== null)
-      assert.equal(commits.length, 100)
-      assert.equal(commits[0], '708a46eac512c7b2486da2247f116d11a100b611')
+      assert(commitBatch !== null)
+      assert.equal(commitBatch.commitSHAs.length, 100)
+      assert.equal(
+        commitBatch.commitSHAs[0],
+        '708a46eac512c7b2486da2247f116d11a100b611'
+      )
+    })
+
+    it('keeps combined batches in topological order', async t => {
+      const path = await setupFixtureRepository(
+        t,
+        'repository-with-105-commits'
+      )
+      const repo = new Repository(path, -1, null, false)
+      const gitStore = new GitStore(repo, shell, new TestStatsStore())
+      const localTip = await getCommit(repo, 'HEAD~104')
+
+      assert(localTip !== null)
+
+      const commitBatch = await gitStore.loadCommitBatch(
+        [localTip.sha, 'HEAD'],
+        0
+      )
+
+      assert(commitBatch !== null)
+      assert.equal(commitBatch.commitSHAs.length, 100)
+      assert(!commitBatch.commitSHAs.includes(localTip.sha))
+      assert.equal(commitBatch.historyCommitCount, 100)
+
+      const nextBatch = await gitStore.loadCommitBatch(
+        [localTip.sha, 'HEAD'],
+        commitBatch.historyCommitCount
+      )
+
+      assert(nextBatch !== null)
+      assert.equal(nextBatch.commitSHAs.length, 5)
+      assert.equal(nextBatch.historyCommitCount, 5)
+      assert.equal(nextBatch.commitSHAs.at(-1), localTip.sha)
+      assert.equal(
+        new Set([...commitBatch.commitSHAs, ...nextBatch.commitSHAs]).size,
+        105
+      )
     })
   })
 

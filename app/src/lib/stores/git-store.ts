@@ -212,13 +212,18 @@ export class GitStore extends BaseStore {
     this.emitUpdate()
   }
 
-  /** Load a batch of commits from the repository, using a given commitish object as the starting point */
-  public async loadCommitBatch(commitish: string, skip: number) {
+  /** Load a batch of commits from the repository, using one or more revisions as starting points. */
+  public async loadCommitBatch(
+    commitish: string | ReadonlyArray<string>,
+    skip: number
+  ) {
     if (this.requestsInFight.has(LoadingHistoryRequestKey)) {
       return null
     }
 
-    const requestKey = `history/compare/${commitish}/skip/${skip}`
+    const requestKey = `history/compare/${
+      typeof commitish === 'string' ? commitish : commitish.join('|')
+    }/skip/${skip}`
     if (this.requestsInFight.has(requestKey)) {
       return null
     }
@@ -226,7 +231,13 @@ export class GitStore extends BaseStore {
     this.requestsInFight.add(requestKey)
 
     const commits = await this.performFailableOperation(() =>
-      getCommits(this.repository, commitish, CommitBatchSize, skip)
+      getCommits(
+        this.repository,
+        commitish,
+        CommitBatchSize,
+        skip,
+        typeof commitish === 'string' ? [] : ['--topo-order']
+      )
     )
 
     this.requestsInFight.delete(requestKey)
@@ -235,7 +246,10 @@ export class GitStore extends BaseStore {
     }
 
     this.storeCommits(commits)
-    return commits.map(c => c.sha)
+    return {
+      commitSHAs: commits.map(commit => commit.sha),
+      historyCommitCount: commits.length,
+    }
   }
 
   public async refreshTags() {

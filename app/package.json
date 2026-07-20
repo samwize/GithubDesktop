@@ -4,6 +4,7 @@
   "bundleID": "com.just2us.GitPub",
   "companyName": "Just2us",
   "version": "4.0.0",
+  "buildNumber": "40001",
   "main": "./main.js",
   "repository": {
     "type": "git",

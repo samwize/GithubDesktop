@@ -27,7 +27,7 @@ import { Emoji } from '../../lib/emoji'
 import { enableAccessibleListToolTips } from '../../lib/feature-flag'
 import { TooltippedContent } from '../lib/tooltipped-content'
 import { formatDate } from '../../lib/format-date'
-import { BranchType } from '../../models/branch'
+import { BranchType, IAheadBehind } from '../../models/branch'
 import { CommitGraph } from './commit-graph'
 import { ICommitGraphRef, ICommitGraphRow } from './commit-graph-layout'
 
@@ -57,6 +57,7 @@ interface ICommitProps {
   readonly commitGraphLaneCount?: number
   readonly connectCommitGraphFromTop?: boolean
   readonly currentBranchUpstream?: string | null
+  readonly aheadBehind?: IAheadBehind | null
 }
 
 interface ICommitListItemState {
@@ -210,20 +211,9 @@ export class CommitListItem extends React.PureComponent<
       return null
     }
 
-    const upstream = this.props.currentBranchUpstream
-    const hasCurrentRef =
-      upstream !== undefined &&
-      upstream !== null &&
-      refs.some(ref => ref.isCurrent)
-    const visibleRefs = hasCurrentRef
-      ? refs.filter(
-          ref => ref.type !== BranchType.Remote || ref.name !== upstream
-        )
-      : refs
-
     return (
       <div className="commit-graph-refs">
-        {visibleRefs.map(ref => (
+        {refs.map(ref => (
           <span
             className={getBranchRefClassName(ref)}
             key={`${ref.type}:${ref.name}`}
@@ -252,7 +242,14 @@ export class CommitListItem extends React.PureComponent<
       return null
     }
 
-    return <span className="commit-graph-tracking">tracks {upstream}</span>
+    const status = formatAheadBehind(this.props.aheadBehind)
+
+    return (
+      <span className="commit-graph-tracking">
+        tracks {upstream}
+        {status === null ? null : ` · ${status}`}
+      </span>
+    )
   }
 
   private renderCommitIndicators() {
@@ -311,6 +308,23 @@ export class CommitListItem extends React.PureComponent<
       this.props.onRemoveDragElement()
     }
   }
+}
+
+function formatAheadBehind(aheadBehind: IAheadBehind | null | undefined) {
+  if (aheadBehind === null || aheadBehind === undefined) {
+    return null
+  }
+
+  if (aheadBehind.ahead === 0 && aheadBehind.behind === 0) {
+    return 'up to date'
+  }
+
+  return [
+    aheadBehind.ahead > 0 ? `${aheadBehind.ahead} ahead` : null,
+    aheadBehind.behind > 0 ? `${aheadBehind.behind} behind` : null,
+  ]
+    .filter((value): value is string => value !== null)
+    .join(' · ')
 }
 
 function getBranchRefClassName(ref: ICommitGraphRef): string {

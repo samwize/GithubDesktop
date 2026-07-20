@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { About } from './about'
-import { getName, getVersion } from '../lib/app-proxy'
+import { getBuildNumber, getName, getVersion } from '../lib/app-proxy'
 import { IUpdateState, UpdateStatus } from '../lib/update-store'
 
 interface IAboutTestDialogProps {
@@ -59,6 +59,7 @@ export class AboutTestDialog extends React.Component<
         onDismissed={this.props.onDismissed}
         applicationName={getName()}
         applicationVersion={version}
+        applicationBuildNumber={getBuildNumber()}
         applicationArchitecture={process.arch}
         onCheckForNonStaggeredUpdates={this.onCheckForNonStaggeredUpdates}
         onShowAcknowledgements={this.props.onShowAcknowledgements}
