@@ -18,6 +18,7 @@ import {
 import {
   smokeRepoFileContents,
   smokeRepoFileName,
+  smokeRepoName,
   smokeRepoPath,
   getSmokeRepoCurrentBranch,
   getSmokeRepoHeadMessage,
@@ -100,6 +101,7 @@ async function clickCheckForUpdatesIfAvailable(target: Page | Locator) {
 
 test.describe('GitHub Desktop - App Launch', () => {
   test('should launch, complete welcome flow, commit, and switch branches', async ({
+    app,
     mainWindow: page,
   }) => {
     // Wait for the React app to mount
@@ -177,6 +179,14 @@ test.describe('GitHub Desktop - App Launch', () => {
 
     await repoFile.waitFor({ state: 'visible', timeout: 15000 })
     await repoFile.click()
+
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()[0]?.getTitle()
+        )
+      )
+      .toBe(smokeRepoName)
 
     // ── Diff ────────────────────────────────────────────────────────
     const diffContainer = page.locator('.diff-container')
