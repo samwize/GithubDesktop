@@ -43,7 +43,7 @@ describe('GitStore', () => {
       )
     })
 
-    it('keeps the first revision in the initial combined batch', async t => {
+    it('keeps combined batches in topological order', async t => {
       const path = await setupFixtureRepository(
         t,
         'repository-with-105-commits'
@@ -60,8 +60,8 @@ describe('GitStore', () => {
       )
 
       assert(commitBatch !== null)
-      assert.equal(commitBatch.commitSHAs.length, 101)
-      assert.equal(commitBatch.commitSHAs[0], localTip.sha)
+      assert.equal(commitBatch.commitSHAs.length, 100)
+      assert(!commitBatch.commitSHAs.includes(localTip.sha))
       assert.equal(commitBatch.historyCommitCount, 100)
 
       const nextBatch = await gitStore.loadCommitBatch(
@@ -72,6 +72,7 @@ describe('GitStore', () => {
       assert(nextBatch !== null)
       assert.equal(nextBatch.commitSHAs.length, 5)
       assert.equal(nextBatch.historyCommitCount, 5)
+      assert.equal(nextBatch.commitSHAs.at(-1), localTip.sha)
       assert.equal(
         new Set([...commitBatch.commitSHAs, ...nextBatch.commitSHAs]).size,
         105

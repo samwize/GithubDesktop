@@ -15,6 +15,7 @@ import {
 } from '.'
 import type { CopilotFeature, CopilotModelSelections } from './copilot-store'
 import { CommitMessageGenerationCancelledError } from './copilot-store'
+import { mergeHistoryCommitBatch } from './history-commits'
 import {
   IBYOKProvider,
   loadBYOKProviders,
@@ -1745,6 +1746,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
       }
 
       const { commitSHAs: batchCommitSHAs, historyCommitCount } = commitBatch
+      const historyCommitSHAs = mergeHistoryCommitBatch(
+        [],
+        0,
+        batchCommitSHAs,
+        typeof history.revisions === 'string' ? null : currentSha
+      )
 
       const newState: IDisplayHistory = {
         kind: HistoryTabMode.History,
@@ -1754,12 +1761,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
         tip: currentSha,
         upstreamTip: history.upstreamTip,
         formState: newState,
-        commitSHAs: batchCommitSHAs,
+        commitSHAs: historyCommitSHAs,
         historyCommitCount,
         filterText: '',
         showBranchList: false,
       }))
-      this.updateOrSelectFirstCommit(repository, batchCommitSHAs)
+      this.updateOrSelectFirstCommit(repository, historyCommitSHAs)
 
       return this.emitUpdate()
     }
@@ -1916,13 +1923,15 @@ export class AppStore extends TypedBaseStore<IAppState> {
         return
       }
 
-      const existingCommits = new Set(commits)
-      const newCommits = commitBatch.commitSHAs.filter(
-        sha => !existingCommits.has(sha)
+      const commitSHAs = mergeHistoryCommitBatch(
+        commits,
+        historyCommitCount,
+        commitBatch.commitSHAs,
+        typeof history.revisions === 'string' ? null : state.compareState.tip
       )
 
       this.repositoryStateCache.updateCompareState(repository, () => ({
-        commitSHAs: commits.concat(newCommits),
+        commitSHAs,
         historyCommitCount: historyCommitCount + commitBatch.historyCommitCount,
       }))
       this.emitUpdate()
