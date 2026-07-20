@@ -114,12 +114,10 @@ const isCopyOrRename = (
   status.kind === AppFileStatusKind.Copied ||
   status.kind === AppFileStatusKind.Renamed
 
-/**
- * Get the repository's commits using `revisionRange` and limited to `limit`
- */
+/** Get commits reachable from one or more revisions, limited to `limit`. */
 export async function getCommits(
   repository: Repository,
-  revisionRange?: string,
+  revisionRange?: string | ReadonlyArray<string>,
   limit?: number,
   skip?: number,
   additionalArgs: ReadonlyArray<string> = []
@@ -142,7 +140,9 @@ export async function getCommits(
   const args = ['log']
 
   if (revisionRange !== undefined) {
-    args.push(revisionRange)
+    args.push(
+      ...(typeof revisionRange === 'string' ? [revisionRange] : revisionRange)
+    )
   }
 
   args.push('--date=raw')

@@ -944,6 +944,9 @@ export interface ICompareState {
   /** The SHA associated with the most recent history state */
   readonly tip: string | null
 
+  /** The upstream SHA associated with the most recent history state */
+  readonly upstreamTip: string | null
+
   /** The SHAs of commits to render in the compare list */
   readonly commitSHAs: ReadonlyArray<string>
 

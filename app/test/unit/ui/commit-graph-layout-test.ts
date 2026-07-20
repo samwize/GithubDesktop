@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import { Branch, BranchType } from '../../../src/models/branch'
 import {
   buildCommitGraph,
+  getReachableCommitSHAs,
   ICommitGraphCommit,
 } from '../../../src/ui/history/commit-graph-layout'
 
@@ -14,8 +15,9 @@ function commit(
 }
 
 function branch(name: string, sha: string, type = BranchType.Local): Branch {
-  const prefix = type === BranchType.Local ? 'heads' : 'remotes/origin'
-  return new Branch(name, null, { sha }, type, `refs/${prefix}/${name}`)
+  const ref =
+    type === BranchType.Local ? `refs/heads/${name}` : `refs/remotes/${name}`
+  return new Branch(name, null, { sha }, type, ref)
 }
 
 describe('commit graph layout', () => {
@@ -92,6 +94,44 @@ describe('commit graph layout', () => {
     assert.equal(graph.rows.get('B')?.commitLane, 0)
   })
 
+  it('keeps the current branch left when the upstream is ahead', () => {
+    const currentBranch = branch('main', 'C')
+    const upstream = branch('origin/main', 'R', BranchType.Remote)
+    const graph = buildCommitGraph(
+      [commit('R', ['C']), commit('C', ['B']), commit('B')],
+      [upstream],
+      currentBranch
+    )
+
+    assert.equal(graph.rows.get('R')?.commitLane, 1)
+    assert.equal(graph.rows.get('C')?.commitLane, 0)
+    assert.ok(
+      graph.rows
+        .get('R')
+        ?.lines.some(
+          line =>
+            line.fromLane === 0 &&
+            line.toLane === 0 &&
+            line.from === 'top' &&
+            line.to === 'bottom'
+        )
+    )
+  })
+
+  it('draws divergent local and upstream histories in separate lanes', () => {
+    const currentBranch = branch('main', 'C')
+    const upstream = branch('origin/main', 'R', BranchType.Remote)
+    const graph = buildCommitGraph(
+      [commit('R', ['B']), commit('C', ['B']), commit('B')],
+      [upstream],
+      currentBranch
+    )
+
+    assert.equal(graph.rows.get('R')?.commitLane, 1)
+    assert.equal(graph.rows.get('C')?.commitLane, 0)
+    assert.equal(graph.rows.get('B')?.commitLane, 0)
+  })
+
   it('orders current, local, and remote refs consistently', () => {
     const currentBranch = branch('main', 'A')
     const localBranch = branch('release', 'A')
@@ -106,5 +146,16 @@ describe('commit graph layout', () => {
       graph.rows.get('A')?.refs.map(ref => ref.name),
       ['main', 'release', 'origin/main']
     )
+  })
+
+  it('identifies commits reachable from the current branch', () => {
+    const commits = [
+      commit('R', ['B']),
+      commit('C', ['B']),
+      commit('B', ['A']),
+      commit('A'),
+    ]
+
+    assert.deepEqual([...getReachableCommitSHAs(commits, 'C')], ['C', 'B', 'A'])
   })
 })

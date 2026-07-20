@@ -47,7 +47,13 @@ export function buildCommitGraph(
   const commitSHAs = new Set(commits.map(commit => commit.sha))
   const refsBySha = getRefsBySha(branches, currentBranch, commitSHAs)
   const rows = new Map<string, ICommitGraphRow>()
-  let activeLanes = new Array<IActiveLane>()
+  const currentTip = currentBranch?.tip.sha
+  let activeLanes =
+    currentTip !== undefined &&
+    commitSHAs.has(currentTip) &&
+    commits[0]?.sha !== currentTip
+      ? [{ sha: currentTip, color: 0 }]
+      : new Array<IActiveLane>()
   let laneCount = 1
 
   for (const commit of commits) {
@@ -146,6 +152,32 @@ export function buildCommitGraph(
       )
       .join(' ')}`,
   }
+}
+
+export function getReachableCommitSHAs(
+  commits: ReadonlyArray<ICommitGraphCommit>,
+  tipSha: string
+): ReadonlySet<string> {
+  const commitsBySha = new Map(commits.map(commit => [commit.sha, commit]))
+  const reachable = new Set<string>()
+  const pending = [tipSha]
+
+  while (pending.length > 0) {
+    const sha = pending.pop()
+    if (sha === undefined || reachable.has(sha)) {
+      continue
+    }
+
+    const commit = commitsBySha.get(sha)
+    if (commit === undefined) {
+      continue
+    }
+
+    reachable.add(sha)
+    pending.push(...commit.parentSHAs)
+  }
+
+  return reachable
 }
 
 function takeAvailableColor(

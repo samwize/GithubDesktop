@@ -290,6 +290,7 @@ export class RepositoryView extends React.Component<
       localCommitSHAs,
       localTags,
       tagsToPush,
+      aheadBehind,
       multiCommitOperationState: mcos,
     } = state
     const { tip } = branchesState
@@ -308,6 +309,7 @@ export class RepositoryView extends React.Component<
         selectedCommitShas={shas}
         shasToHighlight={compareState.shasToHighlight}
         currentBranch={currentBranch}
+        aheadBehind={aheadBehind}
         emoji={emoji}
         commitLookup={commitLookup}
         localCommitSHAs={localCommitSHAs}

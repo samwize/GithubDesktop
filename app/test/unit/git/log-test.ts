@@ -2,9 +2,17 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert'
 import { Repository } from '../../../src/models/repository'
 import { getChangedFiles, getCommits } from '../../../src/lib/git'
-import { setupFixtureRepository } from '../../helpers/repositories'
+import {
+  setupEmptyRepository,
+  setupFixtureRepository,
+} from '../../helpers/repositories'
 import { AppFileStatusKind } from '../../../src/models/status'
 import { setupLocalConfig } from '../../helpers/local-config'
+import {
+  createBranch,
+  makeCommit,
+  switchTo,
+} from '../../helpers/repository-scaffolding'
 
 describe('git/log', () => {
   describe('getCommits', () => {
@@ -60,6 +68,38 @@ describe('git/log', () => {
       assert.deepStrictEqual(commits[0].tags, ['important'])
       assert.deepStrictEqual(commits[1].tags, ['tentative', 'less-important'])
       assert.equal(commits[2].tags.length, 0)
+    })
+
+    it('loads the combined history of multiple revisions', async t => {
+      const repository = await setupEmptyRepository(t)
+      await makeCommit(repository, {
+        entries: [{ path: 'base', contents: 'base' }],
+        commitMessage: 'base',
+      })
+      await createBranch(repository, 'upstream', 'HEAD')
+      await makeCommit(repository, {
+        entries: [{ path: 'local', contents: 'local' }],
+        commitMessage: 'local',
+      })
+      await switchTo(repository, 'upstream')
+      await makeCommit(repository, {
+        entries: [{ path: 'remote', contents: 'remote' }],
+        commitMessage: 'remote',
+      })
+      await switchTo(repository, 'master')
+
+      const commits = await getCommits(
+        repository,
+        ['HEAD', 'upstream'],
+        100,
+        undefined,
+        ['--topo-order']
+      )
+      const summaries = commits.map(commit => commit.summary)
+
+      assert.deepEqual(new Set(summaries), new Set(['local', 'remote', 'base']))
+      assert.ok(summaries.indexOf('base') > summaries.indexOf('local'))
+      assert.ok(summaries.indexOf('base') > summaries.indexOf('remote'))
     })
   })
 

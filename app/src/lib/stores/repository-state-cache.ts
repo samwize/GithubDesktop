@@ -411,6 +411,7 @@ function getInitialRepositoryState(): IRepositoryState {
         kind: HistoryTabMode.History,
       },
       tip: null,
+      upstreamTip: null,
       mergeStatus: null,
       showBranchList: false,
       filterText: '',

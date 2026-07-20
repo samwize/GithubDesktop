@@ -83,7 +83,7 @@ import {
   WorkingDirectoryStatus,
   AppFileStatusKind,
 } from '../../models/status'
-import { TipState, tipEquals, IValidBranch } from '../../models/tip'
+import { Tip, TipState, tipEquals, IValidBranch } from '../../models/tip'
 import {
   DefaultCommitMessage,
   ICommitMessage,
@@ -1707,6 +1707,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     if (action.kind === HistoryTabMode.History) {
       const { tip } = gitStore
+      const history = getHistoryRevisions(tip, gitStore.allBranches)
 
       let currentSha: string | null = null
 
@@ -1719,11 +1720,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
       const { compareState } = this.repositoryStateCache.get(repository)
       const { formState, commitSHAs } = compareState
       const previousTip = compareState.tip
+      const previousUpstreamTip = compareState.upstreamTip
 
       const tipIsUnchanged =
         currentSha !== null &&
         previousTip !== null &&
-        currentSha === previousTip
+        currentSha === previousTip &&
+        history.upstreamTip === previousUpstreamTip
 
       if (
         tipIsUnchanged &&
@@ -1735,8 +1738,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
         return
       }
 
-      // load initial group of commits for current branch
-      const commits = await gitStore.loadCommitBatch('HEAD', 0)
+      const commits = await gitStore.loadCommitBatch(history.revisions, 0)
 
       if (commits === null) {
         return
@@ -1748,6 +1750,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
       this.repositoryStateCache.updateCompareState(repository, () => ({
         tip: currentSha,
+        upstreamTip: history.upstreamTip,
         formState: newState,
         commitSHAs: commits,
         filterText: '',
@@ -1891,23 +1894,19 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const { formState } = state.compareState
     if (formState.kind === HistoryTabMode.History) {
       const commits = state.compareState.commitSHAs
-
       const tip = state.branchesState.tip
-
-      let newCommits: string[] | null = null
-
-      // Prioritize pulling from the local commits if the last one we pulled is local
-      if (
-        commits.length > 0 &&
-        tip.kind === TipState.Valid &&
-        gitStore.localCommitSHAs.includes(commits[commits.length - 1])
-      ) {
-        newCommits = await gitStore.loadLocalCommits(tip.branch, commits.length)
+      if (tip.kind === TipState.Valid) {
+        await gitStore.loadLocalCommits(
+          tip.branch,
+          gitStore.localCommitSHAs.length
+        )
       }
 
-      if (!newCommits || newCommits.length === 0) {
-        newCommits = await gitStore.loadCommitBatch('HEAD', commits.length)
-      }
+      const history = getHistoryRevisions(tip, state.branchesState.allBranches)
+      const newCommits = await gitStore.loadCommitBatch(
+        history.revisions,
+        commits.length
+      )
 
       if (!newCommits) {
         return
@@ -10667,6 +10666,30 @@ function getInitialAction(
     comparisonMode,
     branch: comparisonBranch,
   }
+}
+
+function getHistoryRevisions(
+  tip: Tip,
+  branches: ReadonlyArray<Branch>
+): {
+  readonly revisions: string | ReadonlyArray<string>
+  readonly upstreamTip: string | null
+} {
+  if (tip.kind !== TipState.Valid || tip.branch.upstream === null) {
+    return { revisions: 'HEAD', upstreamTip: null }
+  }
+
+  const upstream = branches.find(
+    branch =>
+      branch.type === BranchType.Remote && branch.name === tip.branch.upstream
+  )
+
+  return upstream === undefined
+    ? { revisions: 'HEAD', upstreamTip: null }
+    : {
+        revisions: ['HEAD', upstream.ref],
+        upstreamTip: upstream.tip.sha,
+      }
 }
 
 function userIsStartingMultiCommitOperation(
