@@ -26,6 +26,7 @@ export interface ILicense {
 
 import {
   getBundleID,
+  getBuildNumber,
   getCompanyName,
   getProductName,
 } from '../app/package-info'
@@ -197,6 +198,7 @@ function packageApp() {
       new RegExp('/node_modules/\\.bin($|/)'),
     ],
     appCopyright: `Copyright © ${new Date().getFullYear()} GitHub, Inc.`,
+    buildVersion: getBuildNumber(),
 
     // macOS
     appBundleId: getBundleID(),

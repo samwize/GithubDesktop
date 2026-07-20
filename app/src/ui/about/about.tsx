@@ -42,6 +42,11 @@ interface IAboutProps {
   readonly applicationVersion: string
 
   /**
+   * The build number of the currently installed (and running) app.
+   */
+  readonly applicationBuildNumber: string
+
+  /**
    * The currently installed (and running) architecture of the app.
    */
   readonly applicationArchitecture: string
@@ -255,7 +260,9 @@ export class About extends React.Component<IAboutProps> {
       <LinkButton uri={ReleaseNotesUri}>release notes</LinkButton>
     )
 
-    const versionText = __DEV__ ? `Build ${version}` : `Version ${version}`
+    const versionText = __DEV__
+      ? `Build ${version}`
+      : `Version ${version} (Build ${this.props.applicationBuildNumber}, ${this.props.applicationArchitecture})`
     const titleId = 'Dialog_about'
 
     return (
@@ -278,7 +285,8 @@ export class About extends React.Component<IAboutProps> {
           <h1 id={titleId}>About {name}</h1>
           <p className="no-padding">
             <span className="selectable-text">
-              {versionText} ({this.props.applicationArchitecture})
+              {versionText}
+              {__DEV__ && ` (${this.props.applicationArchitecture})`}
             </span>{' '}
             ({releaseNotesLink})
           </p>

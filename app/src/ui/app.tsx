@@ -19,7 +19,7 @@ import { RetryAction } from '../models/retry-actions'
 import { FetchType } from '../models/fetch'
 import { shouldRenderApplicationMenu } from './lib/features'
 import { matchExistingRepository } from '../lib/repository-matching'
-import { getVersion, getName } from './lib/app-proxy'
+import { getBuildNumber, getVersion, getName } from './lib/app-proxy'
 import {
   getOS,
   isOSNoLongerSupportedByElectron,
@@ -1911,6 +1911,7 @@ export class App extends React.Component<IAppProps, IAppState> {
             onDismissed={onPopupDismissedFn}
             applicationName={getName()}
             applicationVersion={version}
+            applicationBuildNumber={getBuildNumber()}
             applicationArchitecture={process.arch}
             onCheckForNonStaggeredUpdates={this.onCheckForNonStaggeredUpdates}
             onShowAcknowledgements={this.showAcknowledgements}

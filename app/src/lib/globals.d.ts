@@ -34,6 +34,9 @@ declare const __APP_NAME__: string
  */
 declare const __APP_VERSION__: string
 
+/** The build number of the currently running app. */
+declare const __APP_BUILD_NUMBER__: string
+
 /**
  * The commit id of the repository HEAD at build time.
  * Represented as a 40 character SHA-1 hexadecimal digest string.

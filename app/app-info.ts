@@ -1,6 +1,6 @@
 import { getSHA } from './git-info'
 import { getUpdatesURL, getChannel } from '../script/dist-info'
-import { version, productName } from './package.json'
+import { buildNumber, version, productName } from './package.json'
 
 const devClientId = '3a723b10ac5575cc5bb9'
 const devClientSecret = '22c34d87789a365981ed921352a7b9a8c3f69d54'
@@ -25,6 +25,7 @@ export function getReplacements() {
     __LINUX__: process.platform === 'linux',
     __APP_NAME__: s(productName),
     __APP_VERSION__: s(version),
+    __APP_BUILD_NUMBER__: s(buildNumber),
     __DEV__: isDevBuild,
     __DEV_SECRETS__: isDevBuild || !process.env.DESKTOP_OAUTH_CLIENT_SECRET,
     __RELEASE_CHANNEL__: s(channel),
