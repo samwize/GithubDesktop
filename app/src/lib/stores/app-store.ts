@@ -1738,11 +1738,13 @@ export class AppStore extends TypedBaseStore<IAppState> {
         return
       }
 
-      const commits = await gitStore.loadCommitBatch(history.revisions, 0)
+      const commitBatch = await gitStore.loadCommitBatch(history.revisions, 0)
 
-      if (commits === null) {
+      if (commitBatch === null) {
         return
       }
+
+      const { commitSHAs: batchCommitSHAs, historyCommitCount } = commitBatch
 
       const newState: IDisplayHistory = {
         kind: HistoryTabMode.History,
@@ -1752,11 +1754,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
         tip: currentSha,
         upstreamTip: history.upstreamTip,
         formState: newState,
-        commitSHAs: commits,
+        commitSHAs: batchCommitSHAs,
+        historyCommitCount,
         filterText: '',
         showBranchList: false,
       }))
-      this.updateOrSelectFirstCommit(repository, commits)
+      this.updateOrSelectFirstCommit(repository, batchCommitSHAs)
 
       return this.emitUpdate()
     }
@@ -1894,6 +1897,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const { formState } = state.compareState
     if (formState.kind === HistoryTabMode.History) {
       const commits = state.compareState.commitSHAs
+      const historyCommitCount = state.compareState.historyCommitCount
       const tip = state.branchesState.tip
       if (tip.kind === TipState.Valid) {
         await gitStore.loadLocalCommits(
@@ -1903,17 +1907,23 @@ export class AppStore extends TypedBaseStore<IAppState> {
       }
 
       const history = getHistoryRevisions(tip, state.branchesState.allBranches)
-      const newCommits = await gitStore.loadCommitBatch(
+      const commitBatch = await gitStore.loadCommitBatch(
         history.revisions,
-        commits.length
+        historyCommitCount
       )
 
-      if (!newCommits) {
+      if (!commitBatch) {
         return
       }
 
+      const existingCommits = new Set(commits)
+      const newCommits = commitBatch.commitSHAs.filter(
+        sha => !existingCommits.has(sha)
+      )
+
       this.repositoryStateCache.updateCompareState(repository, () => ({
         commitSHAs: commits.concat(newCommits),
+        historyCommitCount: historyCommitCount + commitBatch.historyCommitCount,
       }))
       this.emitUpdate()
     }
@@ -10687,7 +10697,7 @@ function getHistoryRevisions(
   return upstream === undefined
     ? { revisions: 'HEAD', upstreamTip: null }
     : {
-        revisions: ['HEAD', upstream.ref],
+        revisions: [tip.branch.tip.sha, upstream.ref],
         upstreamTip: upstream.tip.sha,
       }
 }

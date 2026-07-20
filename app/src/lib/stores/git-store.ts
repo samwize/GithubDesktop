@@ -245,8 +245,21 @@ export class GitStore extends BaseStore {
       return null
     }
 
-    this.storeCommits(commits)
-    return commits.map(c => c.sha)
+    let historyCommits = commits
+
+    if (skip === 0 && typeof commitish !== 'string') {
+      const firstCommit = await this.lookupCommit(commitish[0])
+
+      if (!commits.some(commit => commit.sha === firstCommit.sha)) {
+        historyCommits = [firstCommit, ...commits]
+      }
+    }
+
+    this.storeCommits(historyCommits)
+    return {
+      commitSHAs: historyCommits.map(commit => commit.sha),
+      historyCommitCount: commits.length,
+    }
   }
 
   public async refreshTags() {
