@@ -77,6 +77,23 @@ describe('TokenStore', () => {
     assert.equal(secureStore.getCount, 0)
   })
 
+  it('does not let an older read overwrite a written credential', async () => {
+    const secureStore = new TestSecureStore()
+    let resolveRead: (value: string | null) => void = () => {}
+    secureStore.getPromise = new Promise(resolve => {
+      resolveRead = resolve
+    })
+    const tokenStore = new TokenStore(secureStore)
+
+    const read = tokenStore.getItem('service', 'login')
+    await tokenStore.setItem('service', 'login', 'new-token')
+    resolveRead('old-token')
+
+    assert.equal(await read, 'new-token')
+    assert.equal(await tokenStore.getItem('service', 'login'), 'new-token')
+    assert.equal(secureStore.getCount, 1)
+  })
+
   it('clears the cache after deleting a credential', async () => {
     const secureStore = new TestSecureStore()
     secureStore.value = 'token'
@@ -88,6 +105,23 @@ describe('TokenStore', () => {
     assert.equal(await tokenStore.getItem('service', 'login'), null)
     assert.equal(secureStore.getCount, 1)
     assert.equal(secureStore.deleteCount, 1)
+  })
+
+  it('does not let an older read restore a deleted credential', async () => {
+    const secureStore = new TestSecureStore()
+    let resolveRead: (value: string | null) => void = () => {}
+    secureStore.getPromise = new Promise(resolve => {
+      resolveRead = resolve
+    })
+    const tokenStore = new TokenStore(secureStore)
+
+    const read = tokenStore.getItem('service', 'login')
+    await tokenStore.deleteItem('service', 'login')
+    resolveRead('old-token')
+
+    assert.equal(await read, null)
+    assert.equal(await tokenStore.getItem('service', 'login'), null)
+    assert.equal(secureStore.getCount, 1)
   })
 
   it('allows a failed read to be retried', async () => {
