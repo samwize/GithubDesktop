@@ -92,6 +92,8 @@ function packageWindows() {
   const iconUrl = 'https://desktop.githubusercontent.com/app-icon.ico'
 
   const nugetPkgName = getWindowsIdentifierName()
+  const updatesURL = getUpdatesURL()
+  const makeDelta = shouldMakeDelta() && updatesURL !== undefined
   const options: electronInstaller.Options = {
     name: nugetPkgName,
     appDirectory: distPath,
@@ -104,10 +106,10 @@ function packageWindows() {
     title: productName,
     setupExe: getWindowsStandaloneName(),
     setupMsi: getWindowsInstallerName(),
+    noDelta: !makeDelta,
   }
 
-  const updatesURL = getUpdatesURL()
-  if (shouldMakeDelta() && updatesURL !== undefined) {
+  if (makeDelta) {
     const url = new URL(updatesURL)
     // Make sure Squirrel.Windows isn't affected by partially or completely
     // disabled releases.
@@ -147,7 +149,7 @@ function packageWindows() {
       const arch = getDistArchitecture()
       const prefix = `${getWindowsIdentifierName()}-${getVersion()}`
 
-      for (const kind of shouldMakeDelta() ? ['full', 'delta'] : ['full']) {
+      for (const kind of makeDelta ? ['full', 'delta'] : ['full']) {
         const from = join(outputDir, `${prefix}-${kind}.nupkg`)
         const to = join(outputDir, `${prefix}-${arch}-${kind}.nupkg`)
 
