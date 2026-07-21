@@ -320,14 +320,25 @@ export class App extends React.Component<IAppProps, IAppState> {
 
     this.state = props.appStore.getState()
     props.appStore.onDidUpdate(state => {
+      const selection = state.selectedState
+      const selectedRepository = selection?.repository ?? null
       const selectedRepositoryPath =
-        state.selectedState?.type === SelectionType.Repository
-          ? state.selectedState.repository.path
+        selection?.type === SelectionType.Repository
+          ? selection.repository.path
           : null
       if (this.selectedRepositoryPath !== selectedRepositoryPath) {
         this.selectedRepositoryPath = selectedRepositoryPath
         setSelectedRepositoryPath(selectedRepositoryPath)
       }
+
+      const windowTitle =
+        selectedRepository instanceof Repository
+          ? selectedRepository.alias ?? selectedRepository.name
+          : selectedRepository?.name ?? __APP_NAME__
+      if (document.title !== windowTitle) {
+        document.title = windowTitle
+      }
+
       this.setState(state)
     })
 
