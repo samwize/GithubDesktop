@@ -331,7 +331,10 @@ export class App extends React.Component<IAppProps, IAppState> {
         setSelectedRepositoryPath(selectedRepositoryPath)
       }
 
-      const windowTitle = selectedRepository?.name ?? __APP_NAME__
+      const windowTitle =
+        selectedRepository instanceof Repository
+          ? selectedRepository.alias ?? selectedRepository.name
+          : selectedRepository?.name ?? __APP_NAME__
       if (document.title !== windowTitle) {
         document.title = windowTitle
       }
