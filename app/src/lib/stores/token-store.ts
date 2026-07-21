@@ -1,15 +1,19 @@
-import * as keytar from 'keytar'
+import {
+  deleteSecureStoreItem,
+  getSecureStoreItem,
+  setSecureStoreItem,
+} from '../../ui/main-process-proxy'
 
 function setItem(key: string, login: string, value: string) {
-  return keytar.setPassword(key, login, value)
+  return setSecureStoreItem(key, login, value)
 }
 
 function getItem(key: string, login: string) {
-  return keytar.getPassword(key, login)
+  return getSecureStoreItem(key, login)
 }
 
 function deleteItem(key: string, login: string) {
-  return keytar.deletePassword(key, login)
+  return deleteSecureStoreItem(key, login)
 }
 
 export const TokenStore = {
