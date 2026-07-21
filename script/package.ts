@@ -106,8 +106,9 @@ function packageWindows() {
     setupMsi: getWindowsInstallerName(),
   }
 
-  if (shouldMakeDelta()) {
-    const url = new URL(getUpdatesURL())
+  const updatesURL = getUpdatesURL()
+  if (shouldMakeDelta() && updatesURL !== undefined) {
+    const url = new URL(updatesURL)
     // Make sure Squirrel.Windows isn't affected by partially or completely
     // disabled releases.
     url.searchParams.set('bypassStaggeredRelease', '1')
