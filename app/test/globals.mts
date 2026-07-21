@@ -13,7 +13,7 @@ Object.assign(globalThis, {
   __APP_NAME__: packageInfo.productName,
   __APP_VERSION__: packageInfo.version,
   __RELEASE_CHANNEL__: 'development',
-  __UPDATES_URL__: '',
+  __UPDATES_URL__: undefined,
   __SHA__: 'test',
   __DARWIN__: process.platform === 'darwin',
   __WIN32__: process.platform === 'win32',
@@ -44,6 +44,6 @@ mock.module('electron', {
   namedExports: {
     clipboard: { writeText: () => {} },
     shell: {},
-    ipcRenderer: { on: mock.fn(x => {}) },
+    ipcRenderer: { on: mock.fn(x => {}), send: mock.fn(x => {}) },
   },
 })

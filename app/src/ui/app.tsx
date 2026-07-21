@@ -455,6 +455,7 @@ export class App extends React.Component<IAppProps, IAppState> {
     this.props.dispatcher.installGlobalLFSFilters(false)
 
     if (
+      __UPDATES_URL__ !== undefined &&
       __RELEASE_CHANNEL__ !== 'development' &&
       __RELEASE_CHANNEL__ !== 'test'
     ) {

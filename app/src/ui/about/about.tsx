@@ -95,8 +95,8 @@ class UpdateInfo extends React.Component<IUpdateInfoProps> {
 export class About extends React.Component<IAboutProps> {
   private get canCheckForUpdates() {
     return (
-      __RELEASE_CHANNEL__ !== 'development' ||
-      this.props.allowDevelopment === true
+      this.props.allowDevelopment === true ||
+      (__UPDATES_URL__ !== undefined && __RELEASE_CHANNEL__ !== 'development')
     )
   }
 
@@ -147,6 +147,10 @@ export class About extends React.Component<IAboutProps> {
   }
 
   private renderUpdateDetails() {
+    if (__UPDATES_URL__ === undefined && this.props.allowDevelopment !== true) {
+      return <p>Automatic updates are temporarily disabled.</p>
+    }
+
     if (__LINUX__) {
       return null
     }
@@ -236,7 +240,7 @@ export class About extends React.Component<IAboutProps> {
   }
 
   private renderBetaLink() {
-    if (__RELEASE_CHANNEL__ === 'beta') {
+    if (__UPDATES_URL__ === undefined || __RELEASE_CHANNEL__ === 'beta') {
       return
     }
 

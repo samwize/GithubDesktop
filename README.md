@@ -67,9 +67,12 @@ RELEASE_CHANNEL=test node vendor/yarn-1.21.1.js build:prod
 open -n dist/GitPub-darwin-$(uname -m)/GitPub.app
 ```
 
-`test` means no upstream auto-update channel. The app itself is compiled and
-signed as a production build: no dev server, no hot reload, and no inspector
-stapled to every window.
+Automatic updates are temporarily disabled until GitPub publishes its own
+signed releases. GitPub does not use GitHub Desktop's update service, so install
+new builds manually for now.
+
+The app itself is compiled and signed as a production build: no dev server, no
+hot reload, and no inspector stapled to every window.
 
 This is an unofficial fork. It isn't affiliated with or supported by GitHub,
 Inc.

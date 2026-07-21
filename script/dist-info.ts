@@ -1,11 +1,13 @@
 import * as Path from 'path'
 import * as Fs from 'fs'
 
-import { getProductName, getVersion } from '../app/package-info'
+import { getBundleID, getProductName, getVersion } from '../app/package-info'
 import { join } from 'path'
 
 const productName = getProductName()
 const version = getVersion()
+const bundleID = getBundleID()
+const githubDesktopBundleID = 'com.github.GitHubClient'
 
 const projectRoot = Path.join(__dirname, '..')
 
@@ -136,6 +138,10 @@ export function getDistArchitecture(): 'arm64' | 'x64' {
 }
 
 export function getUpdatesURL() {
+  if (bundleID !== githubDesktopBundleID) {
+    return undefined
+  }
+
   // It is also possible to use a `x64/` path, but for now we'll leave the
   // original URL without architecture in it (which will still work for
   // compatibility reasons) in case anything goes wrong until we have everything
