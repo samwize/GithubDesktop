@@ -34,6 +34,7 @@ import { buildCommitGraph, getReachableCommitSHAs } from './commit-graph-layout'
 import { WorkingTreeGraph } from './commit-graph'
 
 const RowHeight = 50
+const TimelineDetailRowHeight = 20
 
 interface ICommitListProps {
   /** The GitHub repository associated with this commit (if found) */
@@ -340,6 +341,7 @@ export class CommitList extends React.Component<
       this.props.isLocalRepository === false
 
     const commitGraph = this.getCommitGraph()
+    const commitGraphRowHeight = this.getCommitRowHeight({ index: row })
 
     return (
       <CommitListItem
@@ -366,13 +368,13 @@ export class CommitList extends React.Component<
         preferAbsoluteDates={this.props.preferAbsoluteDates}
         commitGraphRow={commitGraph?.rows.get(commit.sha)}
         commitGraphLaneCount={commitGraph?.laneCount}
+        commitGraphRowHeight={commitGraphRowHeight}
         connectCommitGraphFromTop={
           row === 0 &&
           this.props.showCommitGraph === true &&
           (this.props.currentBranch == null ||
             commit.sha === this.props.currentBranch.tip.sha)
         }
-        currentBranchUpstream={this.props.currentBranch?.upstream}
         aheadBehind={this.props.aheadBehind}
       />
     )
@@ -425,6 +427,26 @@ export class CommitList extends React.Component<
       this.props.commitLookup,
       this.props.branches ?? [],
       this.props.currentBranch ?? null
+    )
+  }
+
+  private getCommitRowHeight = ({ index }: { index: number }) => {
+    if (this.props.showCommitGraph !== true) {
+      return RowHeight
+    }
+
+    const sha = this.props.commitSHAs[index]
+    const commit = this.props.commitLookup.get(sha)
+    const graphRow = this.getCommitGraph()?.rows.get(sha)
+
+    return (
+      RowHeight +
+      (graphRow !== undefined && graphRow.refs.length > 0
+        ? TimelineDetailRowHeight
+        : 0) +
+      (commit !== undefined && commit.tags.length > 0
+        ? TimelineDetailRowHeight
+        : 0)
     )
   }
 
@@ -720,7 +742,7 @@ export class CommitList extends React.Component<
             role={this.props.isInformationalView === true ? 'list' : 'listbox'}
             ref={this.listRef}
             rowCount={commitSHAs.length}
-            rowHeight={RowHeight}
+            rowHeight={this.getCommitRowHeight}
             selectedRows={selectedRows}
             rowRenderer={this.renderCommit}
             onDropDataInsertion={this.onDropDataInsertion}
@@ -752,7 +774,7 @@ export class CommitList extends React.Component<
               shasToHighlight: this.props.shasToHighlight,
               preferAbsoluteDates: this.props.preferAbsoluteDates,
               commitGraph: commitGraph?.hash,
-              currentBranchUpstream: this.props.currentBranch?.upstream,
+              aheadBehind: this.props.aheadBehind,
             }}
             setScrollTop={this.props.compareListScrollTop}
             rowCustomClassNameMap={this.getRowCustomClassMap()}

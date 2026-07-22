@@ -1019,6 +1019,20 @@ export class List extends React.Component<IListProps, IListState> {
     }
 
     if (this.grid) {
+      const invalidationPropsChanged = !shallowEquals(
+        prevProps.invalidationProps,
+        this.props.invalidationProps
+      )
+      const variableRowHeightsChanged =
+        typeof this.props.rowHeight !== 'number' &&
+        (this.props.rowHeight !== prevProps.rowHeight ||
+          this.props.rowCount !== prevProps.rowCount ||
+          invalidationPropsChanged)
+
+      if (variableRowHeightsChanged) {
+        this.grid.recomputeGridSize()
+      }
+
       // A non-exhaustive set of checks to see if our current update has already
       // triggered a re-render of the Grid. In order to do this perfectly we'd
       // have to do a shallow compare on all the props we pass to Grid but
@@ -1034,17 +1048,15 @@ export class List extends React.Component<IListProps, IListState> {
           this.props.selectedRows
         )
 
-        const invalidationPropsChanged = !shallowEquals(
-          prevProps.invalidationProps,
-          this.props.invalidationProps
-        )
-
         // Now we need to figure out whether anything changed in such a way that
         // the Grid has to update regardless of its props. Previously we passed
         // our selectedRow and invalidationProps down to Grid and figured that
         // it, being a pure component, would do the right thing but that's not
         // quite the case since invalidationProps is a complex object.
-        if (selectedRowChanged || invalidationPropsChanged) {
+        if (
+          selectedRowChanged ||
+          (invalidationPropsChanged && !variableRowHeightsChanged)
+        ) {
           this.grid.forceUpdate()
         }
       }
