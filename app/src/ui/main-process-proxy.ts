@@ -114,6 +114,12 @@ export const executeMenuItemById = sendProxy('execute-menu-item-by-id', 1)
  */
 export const isWindowFocused = invokeProxy('is-window-focused', 0)
 
+export const getSecureStoreItem = invokeProxy('get-secure-store-item', 2)
+
+export const setSecureStoreItem = invokeProxy('set-secure-store-item', 3)
+
+export const deleteSecureStoreItem = invokeProxy('delete-secure-store-item', 2)
+
 /** Tell the main process to focus on the main window. */
 export const focusWindow = sendProxy('focus-window', 0)
 

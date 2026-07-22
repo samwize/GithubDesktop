@@ -58,6 +58,8 @@ import parseCommandLineArgs from 'minimist'
 import { CLIAction } from '../lib/cli-action'
 import { IRepositoryIndicatorUpdate } from '../lib/ipc-shared'
 import { pathExists } from '../lib/path-exists'
+import * as keytar from 'keytar'
+import { TokenStore } from './token-store'
 import {
   createWindowStateFileName,
   DefaultWindowStateFileName,
@@ -76,6 +78,11 @@ const windowStateFiles = new Map<number, string>()
 const repositoryIndicators = new Map<number, IRepositoryIndicatorUpdate>()
 let mainWindow: AppWindow | null = null
 let backgroundServicesOwnerID: number | null = null
+const tokenStore = new TokenStore({
+  setItem: keytar.setPassword,
+  getItem: keytar.getPassword,
+  deleteItem: keytar.deletePassword,
+})
 
 const launchTime = now()
 
@@ -474,6 +481,16 @@ app.on('ready', async () => {
   }
 
   readyTime = now() - launchTime
+
+  ipcMain.handle('get-secure-store-item', (_, key, login) =>
+    tokenStore.getItem(key, login)
+  )
+  ipcMain.handle('set-secure-store-item', (_, key, login, value) =>
+    tokenStore.setItem(key, login, value)
+  )
+  ipcMain.handle('delete-secure-store-item', (_, key, login) =>
+    tokenStore.deleteItem(key, login)
+  )
 
   possibleProtocols.forEach(protocol => setAsDefaultProtocolClient(protocol))
 

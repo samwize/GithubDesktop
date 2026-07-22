@@ -141,6 +141,16 @@ export type RequestResponseChannels = {
   'get-current-window-state': () => Promise<WindowState | undefined>
   'get-current-window-zoom-factor': () => Promise<number | undefined>
   'get-other-window-repository-paths': () => Promise<ReadonlyArray<string>>
+  'get-secure-store-item': (
+    key: string,
+    login: string
+  ) => Promise<string | null>
+  'set-secure-store-item': (
+    key: string,
+    login: string,
+    value: string
+  ) => Promise<void>
+  'delete-secure-store-item': (key: string, login: string) => Promise<boolean>
   'resolve-proxy': (url: string) => Promise<string>
   'show-save-dialog': (
     options: Electron.SaveDialogOptions
