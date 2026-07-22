@@ -55,8 +55,8 @@ interface ICommitProps {
   readonly preferAbsoluteDates: boolean
   readonly commitGraphRow?: ICommitGraphRow
   readonly commitGraphLaneCount?: number
+  readonly commitGraphRowHeight?: number
   readonly connectCommitGraphFromTop?: boolean
-  readonly currentBranchUpstream?: string | null
   readonly aheadBehind?: IAheadBehind | null
 }
 
@@ -163,16 +163,17 @@ export class CommitListItem extends React.PureComponent<
           {this.renderCommitGraph()}
           <div className="info">
             <div className="commit-summary-line">
-              {this.renderBranchRefs()}
               <RichText
                 className={summaryClassNames}
                 emoji={this.props.emoji}
                 text={commitSummary}
                 renderUrlsAsLinks={false}
               />
+              {this.props.commitGraphRow !== undefined
+                ? this.renderUnpushedIndicator()
+                : null}
             </div>
             <div className="description">
-              {this.renderTrackingBranch()}
               <AvatarStack
                 users={this.state.avatarUsers}
                 accounts={this.props.accounts}
@@ -183,6 +184,8 @@ export class CommitListItem extends React.PureComponent<
                 {renderRelativeTime(date, this.props.preferAbsoluteDates)}
               </div>
             </div>
+            {this.renderBranchRefs()}
+            {this.renderTimelineTags()}
           </div>
           {this.renderCommitIndicators()}
         </div>
@@ -191,8 +194,13 @@ export class CommitListItem extends React.PureComponent<
   }
 
   private renderCommitGraph() {
-    const { commitGraphRow, commitGraphLaneCount } = this.props
-    if (commitGraphRow === undefined || commitGraphLaneCount === undefined) {
+    const { commitGraphRow, commitGraphLaneCount, commitGraphRowHeight } =
+      this.props
+    if (
+      commitGraphRow === undefined ||
+      commitGraphLaneCount === undefined ||
+      commitGraphRowHeight === undefined
+    ) {
       return null
     }
 
@@ -200,59 +208,84 @@ export class CommitListItem extends React.PureComponent<
       <CommitGraph
         row={commitGraphRow}
         laneCount={commitGraphLaneCount}
+        rowHeight={commitGraphRowHeight}
         connectFromTop={this.props.connectCommitGraphFromTop}
       />
     )
   }
 
   private renderBranchRefs() {
-    const refs = this.props.commitGraphRow?.refs
-    if (refs === undefined || refs.length === 0) {
+    const graphRow = this.props.commitGraphRow
+    if (graphRow === undefined || graphRow.refs.length === 0) {
       return null
     }
 
     return (
       <div className="commit-graph-refs">
-        {refs.map(ref => (
-          <span
-            className={getBranchRefClassName(ref)}
-            key={`${ref.type}:${ref.name}`}
-          >
-            {ref.isCurrent ? (
-              <>
-                <span className="sr-only">HEAD, current branch: </span>
-                {ref.name}
-              </>
-            ) : (
-              ref.name
-            )}
-          </span>
-        ))}
+        {graphRow.refs.map(ref => {
+          const divergence = ref.isCurrent
+            ? renderDivergence(this.props.aheadBehind)
+            : null
+
+          return (
+            <span
+              className="commit-graph-ref-group"
+              key={`${ref.type}:${ref.name}`}
+            >
+              <span className={getBranchRefClassName(ref)}>
+                <Octicon
+                  className={`commit-graph-ref-icon commit-graph-color-${graphRow.commitColor}`}
+                  symbol={octicons.gitBranch}
+                />
+                {ref.isCurrent ? (
+                  <>
+                    <span className="sr-only">HEAD, current branch: </span>
+                    {ref.name}
+                  </>
+                ) : (
+                  ref.name
+                )}
+              </span>
+              {divergence}
+            </span>
+          )
+        })}
       </div>
     )
   }
 
-  private renderTrackingBranch() {
-    const upstream = this.props.currentBranchUpstream
-    if (
-      upstream === undefined ||
-      upstream === null ||
-      !this.props.commitGraphRow?.refs.some(ref => ref.isCurrent)
-    ) {
+  private renderTimelineTags() {
+    if (this.props.commitGraphRow === undefined) {
       return null
     }
 
-    const status = formatAheadBehind(this.props.aheadBehind)
+    const { tags } = this.props.commit
+    if (tags.length === 0) {
+      return null
+    }
+
+    const [firstTag] = tags
 
     return (
-      <span className="commit-graph-tracking">
-        tracks {upstream}
-        {status === null ? null : ` · ${status}`}
-      </span>
+      <div
+        className="commit-tags"
+        role="group"
+        aria-label={`Tags: ${tags.join(', ')}`}
+      >
+        <Octicon symbol={octicons.tag} />
+        <span className="tag-name">{firstTag}</span>
+        {tags.length > 1 ? (
+          <span className="tag-indicator-more">+{tags.length - 1}</span>
+        ) : null}
+      </div>
     )
   }
 
   private renderCommitIndicators() {
+    if (this.props.commitGraphRow !== undefined) {
+      return null
+    }
+
     const tagIndicator = renderCommitListItemTags(this.props.commit.tags)
     const unpushedIndicator = this.renderUnpushedIndicator()
 
@@ -310,21 +343,41 @@ export class CommitListItem extends React.PureComponent<
   }
 }
 
-function formatAheadBehind(aheadBehind: IAheadBehind | null | undefined) {
+function renderDivergence(aheadBehind: IAheadBehind | null | undefined) {
   if (aheadBehind === null || aheadBehind === undefined) {
     return null
   }
 
   if (aheadBehind.ahead === 0 && aheadBehind.behind === 0) {
-    return 'up to date'
+    return null
   }
 
-  return [
-    aheadBehind.ahead > 0 ? `${aheadBehind.ahead} ahead` : null,
-    aheadBehind.behind > 0 ? `${aheadBehind.behind} behind` : null,
-  ]
-    .filter((value): value is string => value !== null)
-    .join(' · ')
+  return (
+    <span className="commit-graph-divergence">
+      {aheadBehind.ahead > 0 ? (
+        <span>
+          <span className="sr-only">{`${aheadBehind.ahead} ${
+            aheadBehind.ahead === 1 ? 'commit' : 'commits'
+          } ahead`}</span>
+          <span aria-hidden="true" className="commit-graph-divergence-value">
+            <Octicon symbol={octicons.arrowUp} />
+            <span>{aheadBehind.ahead}</span>
+          </span>
+        </span>
+      ) : null}
+      {aheadBehind.behind > 0 ? (
+        <span>
+          <span className="sr-only">{`${aheadBehind.behind} ${
+            aheadBehind.behind === 1 ? 'commit' : 'commits'
+          } behind`}</span>
+          <span aria-hidden="true" className="commit-graph-divergence-value">
+            <Octicon symbol={octicons.arrowDown} />
+            <span>{aheadBehind.behind}</span>
+          </span>
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 function getBranchRefClassName(ref: ICommitGraphRef): string {

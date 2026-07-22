@@ -202,33 +202,58 @@
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    margin-top: -4px;
+    justify-content: center;
     overflow: hidden;
     min-width: 50px;
+    padding: 5px 0;
 
     .commit-summary-line {
       display: flex;
       align-items: center;
       min-width: 0;
+
+      .unpushed-indicator {
+        background: var(--list-item-badge-background-color);
+        border-radius: 8px;
+        color: var(--list-item-badge-color);
+        flex: 0 0 auto;
+        height: 16px;
+        line-height: 16px;
+        margin-left: var(--spacing-half);
+        padding: 0 var(--spacing-half);
+      }
     }
 
     .commit-graph-refs {
       display: flex;
-      flex: 0 1 auto;
-      gap: 3px;
-      margin-right: var(--spacing-half);
-      max-width: 65%;
+      align-items: center;
+      flex: 0 0 auto;
+      gap: var(--spacing-half);
+      margin-top: 3px;
       min-width: 0;
       overflow: hidden;
     }
 
+    .commit-graph-ref-group {
+      align-items: center;
+      display: flex;
+      flex: 0 1 auto;
+      gap: var(--spacing-half);
+      min-width: 0;
+    }
+
     .commit-graph-ref {
       @include ellipsis;
+      align-items: center;
       background: var(--list-item-badge-background-color);
+      border: 1px solid transparent;
       border-radius: var(--border-radius);
+      box-sizing: border-box;
       color: var(--list-item-badge-color);
+      display: inline-flex;
       flex: 0 1 auto;
       font-size: var(--font-size-sm);
+      height: 18px;
       line-height: 16px;
       max-width: 140px;
       padding: 0 var(--spacing-half);
@@ -239,25 +264,97 @@
         flex-shrink: 0;
         font-weight: var(--font-weight-semibold);
         max-width: 220px;
+
+        .commit-graph-ref-icon {
+          color: inherit;
+        }
       }
 
       &.remote {
-        opacity: 0.8;
+        background: transparent;
+        border-color: var(--text-secondary-color);
+        color: var(--text-secondary-color);
+      }
+    }
+
+    .commit-graph-ref-icon {
+      flex: 0 0 auto;
+      margin-right: 3px;
+      width: 12px;
+    }
+
+    .commit-graph-divergence {
+      align-items: center;
+      color: var(--text-secondary-color);
+      display: flex;
+      flex: 0 0 auto;
+      font-size: var(--font-size-sm);
+      gap: var(--spacing-half);
+
+      > span {
+        align-items: center;
+        display: inline-flex;
+      }
+
+      .commit-graph-divergence-value {
+        align-items: center;
+        display: inline-flex;
+        line-height: 16px;
+        vertical-align: baseline;
+      }
+
+      .octicon {
+        display: block;
+        flex: 0 0 auto;
+        height: 10px;
+        margin-right: 2px;
+        width: 10px;
       }
     }
 
     .description {
+      align-items: center;
       display: flex;
+      flex: 0 0 auto;
       flex-direction: row;
       margin-top: 3px;
+      min-width: 0;
     }
 
-    .commit-graph-tracking {
-      @include ellipsis;
+    .commit-tags {
+      align-items: center;
       color: var(--text-secondary-color);
-      flex: 0 1 auto;
+      display: flex;
+      flex: 0 0 auto;
       font-size: var(--font-size-sm);
-      margin-right: var(--spacing-half);
+      gap: var(--spacing-half);
+      margin-top: 3px;
+      min-width: 0;
+      overflow: hidden;
+
+      > .octicon {
+        flex: 0 0 auto;
+        width: 12px;
+      }
+
+      .tag-name,
+      .tag-indicator-more {
+        @include ellipsis;
+        background: var(--list-item-badge-background-color);
+        border-radius: var(--border-radius);
+        color: var(--list-item-badge-color);
+        line-height: 16px;
+        padding: 0 var(--spacing-half);
+      }
+
+      .tag-name {
+        flex: 0 1 auto;
+        max-width: 220px;
+      }
+
+      .tag-indicator-more {
+        flex: 0 0 auto;
+      }
     }
 
     .summary {

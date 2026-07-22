@@ -11,7 +11,7 @@ import { CommitListItem } from '../../../src/ui/history/commit-list-item'
 import { render, screen } from '../../helpers/ui/render'
 
 describe('CommitList upstream', () => {
-  it('shows the tracked remote ref and synchronization status', () => {
+  it('separates branch, divergence, and tag metadata', () => {
     const identity = new CommitIdentity('Test', 'test@example.com', new Date())
     const commit = new Commit(
       'A',
@@ -22,7 +22,7 @@ describe('CommitList upstream', () => {
       identity,
       [],
       [],
-      []
+      ['v4.0.0', 'latest']
     )
     const currentBranch = new Branch(
       'main',
@@ -51,7 +51,7 @@ describe('CommitList upstream', () => {
         showUnpushedIndicator={false}
         commitGraphRow={graph.rows.get(commit.sha)}
         commitGraphLaneCount={graph.laneCount}
-        currentBranchUpstream={currentBranch.upstream}
+        commitGraphRowHeight={90}
         aheadBehind={{ ahead, behind }}
       />
     )
@@ -59,10 +59,23 @@ describe('CommitList upstream', () => {
 
     assert.ok(screen.getByText('main'))
     assert.ok(screen.getByText('origin/main'))
-    assert.ok(screen.getByText('tracks origin/main · up to date'))
+    assert.equal(screen.queryByText(/tracks origin\/main/), null)
+    assert.equal(screen.queryByText(/up to date/), null)
+    assert.ok(screen.getByLabelText('Tags: v4.0.0, latest'))
+    assert.ok(screen.getByText('v4.0.0'))
+    assert.ok(screen.getByText('+1'))
+    assert.ok(screen.getByText('main').classList.contains('current'))
+    assert.ok(screen.getByText('origin/main').classList.contains('remote'))
 
     rerender(view(2, 3))
-    assert.ok(screen.getByText('tracks origin/main · 2 ahead · 3 behind'))
+    assert.ok(screen.getByText('2 commits ahead'))
+    assert.ok(screen.getByText('3 commits behind'))
+    assert.deepEqual(
+      Array.from(
+        document.querySelectorAll('.commit-graph-divergence-value')
+      ).map(element => element.textContent),
+      ['2', '3']
+    )
   })
 
   it('keeps upstream-only commits out of history rewrite operations', () => {
@@ -136,9 +149,16 @@ describe('CommitList upstream', () => {
         readonly renderCommit: (row: number) => React.ReactElement
       }
     ).renderCommit.bind(list)
+    const getCommitRowHeight = (
+      list as unknown as {
+        readonly getCommitRowHeight: (row: { index: number }) => number
+      }
+    ).getCommitRowHeight
     const remoteItem = renderCommit(0)
     const localItem = renderCommit(1)
 
+    assert.equal(getCommitRowHeight({ index: 0 }), 50)
+    assert.equal(getCommitRowHeight({ index: 1 }), 70)
     assert.equal(remoteItem.props.isDraggable, false)
     assert.equal(remoteItem.props.disableSquashing, true)
     assert.equal(localItem.props.isDraggable, true)
