@@ -218,7 +218,8 @@ import {
   RepositoryType,
   listWorktrees,
   listWorktreesFromGitDir,
-  isWorktreeClean,
+  getWorktreeRemovalStatus,
+  isPullRequestMergedIntoBranch,
   removeWorktree,
   moveWorktree,
   getCommitRangeDiff,
@@ -420,6 +421,11 @@ import {
 import { resolveWithin } from '../path'
 import { WorktreeEntry } from '../../models/worktree'
 import type { Model } from '@github/copilot-sdk/dist/generated/rpc'
+import {
+  getWorktreePullRequestHead,
+  getWorktreePullRequestNumber,
+  hasMergedPullRequest,
+} from '../worktree-cleanup'
 
 const LastSelectedRepositoryIDKey = 'last-selected-repository-id'
 
@@ -6206,16 +6212,11 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public async _requestRemoveCleanWorktrees(
     repository: Repository
   ): Promise<void> {
-    if (this.confirmWorktreeRemoval) {
-      this._closeFoldout(FoldoutType.Worktree)
-      this._showPopup({
-        type: PopupType.RemoveCleanWorktrees,
-        repository,
-      })
-      return
-    }
-
-    await this._removeCleanWorktrees(repository)
+    this._closeFoldout(FoldoutType.Worktree)
+    this._showPopup({
+      type: PopupType.RemoveCleanWorktrees,
+      repository,
+    })
   }
 
   /** This shouldn't be called directly. See 'Dispatcher'. */
@@ -6225,20 +6226,37 @@ export class AppStore extends TypedBaseStore<IAppState> {
       worktree => worktree.type === 'linked' && !worktree.isLocked
     )
 
-    let cleanWorktrees = (
+    let removableWorktrees = (
       await Promise.all(
         candidates.map(async worktree => {
           try {
-            return (await isWorktreeClean(worktree.path)) ? worktree : null
+            const status = await getWorktreeRemovalStatus(worktree.path)
+            if (status === 'dirty') {
+              return null
+            }
+
+            return (await this.isMergedPullRequestWorktree(
+              repository,
+              worktree
+            ))
+              ? { worktree, force: status === 'ignored-only' }
+              : null
           } catch (e) {
             log.error(`Could not check worktree status at ${worktree.path}`, e)
             return null
           }
         })
       )
-    ).filter((worktree): worktree is WorktreeEntry => worktree !== null)
+    ).filter(
+      (
+        candidate
+      ): candidate is {
+        readonly worktree: WorktreeEntry
+        readonly force: boolean
+      } => candidate !== null
+    )
 
-    if (cleanWorktrees.length === 0) {
+    if (removableWorktrees.length === 0) {
       return
     }
 
@@ -6250,17 +6268,19 @@ export class AppStore extends TypedBaseStore<IAppState> {
       )
 
     const otherWindowPaths = await loadOtherWindowPaths()
-    cleanWorktrees = cleanWorktrees.filter(
-      worktree =>
-        !otherWindowPaths.has(this.normalizeRepositoryPath(worktree.path))
+    removableWorktrees = removableWorktrees.filter(
+      candidate =>
+        !otherWindowPaths.has(
+          this.normalizeRepositoryPath(candidate.worktree.path)
+        )
     )
 
-    if (cleanWorktrees.length === 0) {
+    if (removableWorktrees.length === 0) {
       return
     }
 
-    const currentWorktree = cleanWorktrees.find(
-      worktree => worktree.path === repository.path
+    const currentWorktree = removableWorktrees.find(
+      candidate => candidate.worktree.path === repository.path
     )
 
     if (currentWorktree !== undefined) {
@@ -6274,7 +6294,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     let firstError: Error | null = null
 
-    for (const worktree of cleanWorktrees) {
+    for (const { worktree, force } of removableWorktrees) {
       const latestOtherWindowPaths = await loadOtherWindowPaths()
       if (
         latestOtherWindowPaths.has(this.normalizeRepositoryPath(worktree.path))
@@ -6283,7 +6303,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       }
 
       try {
-        await removeWorktree(repository.path, worktree.path)
+        await removeWorktree(repository.path, worktree.path, force)
         this.statsStore.increment('worktreeDeletedCount')
       } catch (e) {
         log.error(`Could not remove clean worktree at ${worktree.path}`, e)
@@ -6296,6 +6316,60 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (firstError !== null) {
       throw firstError
     }
+  }
+
+  private async isMergedPullRequestWorktree(
+    repository: Repository,
+    worktree: WorktreeEntry
+  ): Promise<boolean> {
+    if (!isRepositoryWithGitHubRepository(repository)) {
+      return false
+    }
+
+    const gitStore = this.gitStoreCache.get(repository)
+    const head = getWorktreePullRequestHead(
+      worktree,
+      gitStore.allBranches,
+      gitStore.remotes
+    )
+    const pullRequestNumber = getWorktreePullRequestNumber(worktree)
+    const defaultBranch = gitStore.defaultBranch
+    if (head !== null && pullRequestNumber !== null && defaultBranch !== null) {
+      const remoteDefaultBranch =
+        gitStore.allBranches.find(
+          branch => branch.name === defaultBranch.upstream
+        ) ?? defaultBranch
+
+      if (
+        await isPullRequestMergedIntoBranch(
+          repository.path,
+          remoteDefaultBranch.ref,
+          pullRequestNumber
+        )
+      ) {
+        return true
+      }
+    }
+
+    const account = getAccountForRepository(this.accounts, repository)
+    if (account === null) {
+      return false
+    }
+
+    if (head === null) {
+      return false
+    }
+
+    const api = API.fromAccount(account)
+    const gitHubRepository = getNonForkGitHubRepository(repository)
+    const pullRequests = await api.fetchPullRequestsForHead(
+      gitHubRepository.owner.login,
+      gitHubRepository.name,
+      head.owner,
+      head.branch
+    )
+
+    return hasMergedPullRequest(pullRequests)
   }
 
   /** This shouldn't be called directly. See 'Dispatcher'. */

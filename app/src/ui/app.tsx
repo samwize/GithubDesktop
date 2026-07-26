@@ -2933,13 +2933,7 @@ export class App extends React.Component<IAppProps, IAppState> {
           <RemoveCleanWorktreesDialog
             key="remove-clean-worktrees"
             repository={popup.repository}
-            askForConfirmationOnWorktreeRemoval={
-              this.state.askForConfirmationOnWorktreeRemoval
-            }
             onRemoveCleanWorktrees={this.onRemoveCleanWorktrees}
-            onConfirmWorktreeRemovalChanged={
-              this.onConfirmWorktreeRemovalChanged
-            }
             onDismissed={onPopupDismissedFn}
           />
         )

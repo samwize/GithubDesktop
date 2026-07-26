@@ -6,6 +6,8 @@ import { exec } from 'dugite'
 import { setupEmptyRepository } from '../../helpers/repositories'
 import { makeCommit } from '../../helpers/repository-scaffolding'
 import {
+  getWorktreeRemovalStatus,
+  isPullRequestMergedIntoBranch,
   parseWorktreePorcelainOutput,
   isWorktreeClean,
   listWorktrees,
@@ -356,6 +358,29 @@ describe('git/worktree', () => {
       await writeFile(Path.join(repo.path, '.env'), 'SECRET=value')
 
       assert.strictEqual(await isWorktreeClean(repo.path), false)
+      assert.strictEqual(
+        await getWorktreeRemovalStatus(repo.path),
+        'ignored-only'
+      )
+    })
+  })
+
+  describe('isPullRequestMergedIntoBranch', () => {
+    it('finds a squash merge by its pull request number', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [{ path: 'README', contents: 'hello' }],
+        commitMessage: 'Add worktree cleanup (#123)',
+      })
+
+      assert.equal(
+        await isPullRequestMergedIntoBranch(repo.path, 'main', 123),
+        true
+      )
+      assert.equal(
+        await isPullRequestMergedIntoBranch(repo.path, 'main', 456),
+        false
+      )
     })
   })
 })

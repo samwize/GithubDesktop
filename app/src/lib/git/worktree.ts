@@ -118,7 +118,31 @@ export async function removeWorktree(
 }
 
 export async function isWorktreeClean(worktreePath: string): Promise<boolean> {
+  return (await getWorktreeRemovalStatus(worktreePath)) === 'clean'
+}
+
+export type WorktreeRemovalStatus = 'clean' | 'ignored-only' | 'dirty'
+
+export async function getWorktreeRemovalStatus(
+  worktreePath: string
+): Promise<WorktreeRemovalStatus> {
   const result = await git(
+    [
+      '--no-optional-locks',
+      'status',
+      '--porcelain',
+      '-z',
+      '--untracked-files=normal',
+    ],
+    worktreePath,
+    'getWorktreeRemovalStatus'
+  )
+
+  if (result.stdout.length > 0) {
+    return 'dirty'
+  }
+
+  const resultWithIgnoredFiles = await git(
     [
       '--no-optional-locks',
       'status',
@@ -128,10 +152,31 @@ export async function isWorktreeClean(worktreePath: string): Promise<boolean> {
       '--ignored=matching',
     ],
     worktreePath,
-    'isWorktreeClean'
+    'getWorktreeRemovalStatusWithIgnoredFiles'
   )
 
-  return result.stdout.length === 0
+  return resultWithIgnoredFiles.stdout.length === 0 ? 'clean' : 'ignored-only'
+}
+
+export async function isPullRequestMergedIntoBranch(
+  repositoryPath: string,
+  branchRef: string,
+  pullRequestNumber: number
+): Promise<boolean> {
+  const result = await git(
+    [
+      'log',
+      '-1',
+      '--format=%H',
+      '--fixed-strings',
+      `--grep=(#${pullRequestNumber})`,
+      branchRef,
+    ],
+    repositoryPath,
+    'isPullRequestMergedIntoBranch'
+  )
+
+  return result.stdout.trim().length > 0
 }
 
 export async function moveWorktree(

@@ -123,8 +123,8 @@ export class WorktreeList extends React.Component<IWorktreeListProps> {
     const label = this.props.isRemovingCleanWorktrees
       ? 'Removing…'
       : __DARWIN__
-      ? 'Remove Clean Worktrees'
-      : 'Remove clean worktrees'
+      ? 'Remove Merged Worktrees'
+      : 'Remove merged worktrees'
 
     return (
       <div className="remove-clean-worktrees-row">
