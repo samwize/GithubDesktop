@@ -59,11 +59,17 @@ export function getWorktreePullRequestHead(
 }
 
 export function hasMergedPullRequest(
-  pullRequests: ReadonlyArray<Pick<IAPIPullRequest, 'state' | 'merged_at'>>
+  pullRequests: ReadonlyArray<
+    Pick<IAPIPullRequest, 'state' | 'merged_at' | 'head'>
+  >,
+  worktreeHead: string
 ): boolean {
   return (
     pullRequests.length > 0 &&
     pullRequests.every(pullRequest => pullRequest.state === 'closed') &&
-    pullRequests.some(pullRequest => pullRequest.merged_at != null)
+    pullRequests.some(
+      pullRequest =>
+        pullRequest.merged_at != null && pullRequest.head.sha === worktreeHead
+    )
   )
 }

@@ -39,19 +39,37 @@ describe('worktree cleanup', () => {
   })
 
   it('requires a merged pull request and no open reuse of the branch', () => {
+    const head = {
+      ref: 'feature',
+      sha: 'abc',
+      repo: null,
+    }
     assert.equal(
-      hasMergedPullRequest([{ state: 'closed', merged_at: '2026-07-01' }]),
+      hasMergedPullRequest(
+        [{ state: 'closed', merged_at: '2026-07-01', head }],
+        'abc'
+      ),
       true
     )
     assert.equal(
-      hasMergedPullRequest([{ state: 'closed', merged_at: null }]),
+      hasMergedPullRequest([{ state: 'closed', merged_at: null, head }], 'abc'),
       false
     )
     assert.equal(
-      hasMergedPullRequest([
-        { state: 'closed', merged_at: '2026-07-01' },
-        { state: 'open', merged_at: null },
-      ]),
+      hasMergedPullRequest(
+        [{ state: 'closed', merged_at: '2026-07-01', head }],
+        'different'
+      ),
+      false
+    )
+    assert.equal(
+      hasMergedPullRequest(
+        [
+          { state: 'closed', merged_at: '2026-07-01', head },
+          { state: 'open', merged_at: null, head },
+        ],
+        'abc'
+      ),
       false
     )
   })

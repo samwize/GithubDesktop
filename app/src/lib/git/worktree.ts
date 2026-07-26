@@ -117,6 +117,16 @@ export async function removeWorktree(
   await git(args, repositoryPath, 'removeWorktree')
 }
 
+export async function removeIgnoredWorktreeFiles(
+  worktreePath: string
+): Promise<void> {
+  await git(
+    ['clean', '-d', '-f', '-X'],
+    worktreePath,
+    'removeIgnoredWorktreeFiles'
+  )
+}
+
 export async function isWorktreeClean(worktreePath: string): Promise<boolean> {
   return (await getWorktreeRemovalStatus(worktreePath)) === 'clean'
 }
@@ -177,6 +187,22 @@ export async function isPullRequestMergedIntoBranch(
   )
 
   return result.stdout.trim().length > 0
+}
+
+export async function getPullRequestHeadSha(
+  repositoryPath: string,
+  remote: string,
+  pullRequestNumber: number
+): Promise<string | null> {
+  const ref = `refs/pull/${pullRequestNumber}/head`
+  const result = await git(
+    ['ls-remote', remote, ref],
+    repositoryPath,
+    'getPullRequestHeadSha'
+  )
+  const [sha] = result.stdout.trim().split(/\s+/, 1)
+
+  return sha || null
 }
 
 export async function moveWorktree(

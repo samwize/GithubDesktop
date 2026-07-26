@@ -219,7 +219,9 @@ import {
   listWorktrees,
   listWorktreesFromGitDir,
   getWorktreeRemovalStatus,
+  getPullRequestHeadSha,
   isPullRequestMergedIntoBranch,
+  removeIgnoredWorktreeFiles,
   removeWorktree,
   moveWorktree,
   getCommitRangeDiff,
@@ -6239,7 +6241,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
               repository,
               worktree
             ))
-              ? { worktree, force: status === 'ignored-only' }
+              ? { worktree, hasIgnoredFiles: status === 'ignored-only' }
               : null
           } catch (e) {
             log.error(`Could not check worktree status at ${worktree.path}`, e)
@@ -6252,7 +6254,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
         candidate
       ): candidate is {
         readonly worktree: WorktreeEntry
-        readonly force: boolean
+        readonly hasIgnoredFiles: boolean
       } => candidate !== null
     )
 
@@ -6294,7 +6296,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     let firstError: Error | null = null
 
-    for (const { worktree, force } of removableWorktrees) {
+    for (const { worktree, hasIgnoredFiles } of removableWorktrees) {
       const latestOtherWindowPaths = await loadOtherWindowPaths()
       if (
         latestOtherWindowPaths.has(this.normalizeRepositoryPath(worktree.path))
@@ -6303,7 +6305,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
       }
 
       try {
-        await removeWorktree(repository.path, worktree.path, force)
+        if (hasIgnoredFiles) {
+          await removeIgnoredWorktreeFiles(worktree.path)
+        }
+        await removeWorktree(repository.path, worktree.path)
         this.statsStore.increment('worktreeDeletedCount')
       } catch (e) {
         log.error(`Could not remove clean worktree at ${worktree.path}`, e)
@@ -6334,18 +6339,31 @@ export class AppStore extends TypedBaseStore<IAppState> {
     )
     const pullRequestNumber = getWorktreePullRequestNumber(worktree)
     const defaultBranch = gitStore.defaultBranch
-    if (head !== null && pullRequestNumber !== null && defaultBranch !== null) {
+    const pullRequestRemote = isForkedRepositoryContributingToParent(repository)
+      ? gitStore.upstreamRemote
+      : gitStore.defaultRemote
+    if (
+      head !== null &&
+      pullRequestNumber !== null &&
+      defaultBranch !== null &&
+      pullRequestRemote !== null
+    ) {
       const remoteDefaultBranch =
         gitStore.allBranches.find(
           branch => branch.name === defaultBranch.upstream
         ) ?? defaultBranch
 
       if (
-        await isPullRequestMergedIntoBranch(
+        (await getPullRequestHeadSha(
+          repository.path,
+          pullRequestRemote.name,
+          pullRequestNumber
+        )) === worktree.head &&
+        (await isPullRequestMergedIntoBranch(
           repository.path,
           remoteDefaultBranch.ref,
           pullRequestNumber
-        )
+        ))
       ) {
         return true
       }
@@ -6369,7 +6387,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       head.branch
     )
 
-    return hasMergedPullRequest(pullRequests)
+    return hasMergedPullRequest(pullRequests, worktree.head)
   }
 
   /** This shouldn't be called directly. See 'Dispatcher'. */
