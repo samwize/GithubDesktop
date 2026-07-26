@@ -643,6 +643,7 @@ export interface IAPIPullRequest {
   readonly base: IAPIPullRequestRef
   readonly body: string
   readonly state: 'open' | 'closed'
+  readonly merged_at?: string | null
   readonly draft?: boolean
 }
 
@@ -1191,6 +1192,29 @@ export class API {
       return await this.fetchAll<IAPIPullRequest>(url)
     } catch (e) {
       log.warn(`failed fetching open PRs for repository ${owner}/${name}`, e)
+      throw e
+    }
+  }
+
+  /** Fetch all pull requests created from a branch. */
+  public async fetchPullRequestsForHead(
+    owner: string,
+    name: string,
+    headOwner: string,
+    headBranch: string
+  ) {
+    const url = urlWithQueryString(`repos/${owner}/${name}/pulls`, {
+      state: 'all',
+      head: `${headOwner}:${headBranch}`,
+    })
+
+    try {
+      return await this.fetchAll<IAPIPullRequest>(url)
+    } catch (e) {
+      log.warn(
+        `failed fetching PRs for ${owner}/${name} from ${headOwner}:${headBranch}`,
+        e
+      )
       throw e
     }
   }

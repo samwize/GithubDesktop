@@ -117,8 +117,42 @@ export async function removeWorktree(
   await git(args, repositoryPath, 'removeWorktree')
 }
 
+export async function removeIgnoredWorktreeFiles(
+  worktreePath: string
+): Promise<void> {
+  await git(
+    ['clean', '-d', '-f', '-X'],
+    worktreePath,
+    'removeIgnoredWorktreeFiles'
+  )
+}
+
 export async function isWorktreeClean(worktreePath: string): Promise<boolean> {
+  return (await getWorktreeRemovalStatus(worktreePath)) === 'clean'
+}
+
+export type WorktreeRemovalStatus = 'clean' | 'ignored-only' | 'dirty'
+
+export async function getWorktreeRemovalStatus(
+  worktreePath: string
+): Promise<WorktreeRemovalStatus> {
   const result = await git(
+    [
+      '--no-optional-locks',
+      'status',
+      '--porcelain',
+      '-z',
+      '--untracked-files=normal',
+    ],
+    worktreePath,
+    'getWorktreeRemovalStatus'
+  )
+
+  if (result.stdout.length > 0) {
+    return 'dirty'
+  }
+
+  const resultWithIgnoredFiles = await git(
     [
       '--no-optional-locks',
       'status',
@@ -128,10 +162,47 @@ export async function isWorktreeClean(worktreePath: string): Promise<boolean> {
       '--ignored=matching',
     ],
     worktreePath,
-    'isWorktreeClean'
+    'getWorktreeRemovalStatusWithIgnoredFiles'
   )
 
-  return result.stdout.length === 0
+  return resultWithIgnoredFiles.stdout.length === 0 ? 'clean' : 'ignored-only'
+}
+
+export async function isPullRequestMergedIntoBranch(
+  repositoryPath: string,
+  branchRef: string,
+  pullRequestNumber: number
+): Promise<boolean> {
+  const result = await git(
+    [
+      'log',
+      '-1',
+      '--format=%H',
+      '--fixed-strings',
+      `--grep=(#${pullRequestNumber})`,
+      branchRef,
+    ],
+    repositoryPath,
+    'isPullRequestMergedIntoBranch'
+  )
+
+  return result.stdout.trim().length > 0
+}
+
+export async function getPullRequestHeadSha(
+  repositoryPath: string,
+  remote: string,
+  pullRequestNumber: number
+): Promise<string | null> {
+  const ref = `refs/pull/${pullRequestNumber}/head`
+  const result = await git(
+    ['ls-remote', remote, ref],
+    repositoryPath,
+    'getPullRequestHeadSha'
+  )
+  const [sha] = result.stdout.trim().split(/\s+/, 1)
+
+  return sha || null
 }
 
 export async function moveWorktree(

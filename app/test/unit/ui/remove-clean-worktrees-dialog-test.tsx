@@ -24,18 +24,13 @@ describe('RemoveCleanWorktreesDialog', () => {
 
     const repository = new Repository('/tmp/repository', 1, null, false)
     let removedRepository: Repository | null = null
-    let confirmationSetting: boolean | null = null
     let dismissed = false
 
     render(
       <RemoveCleanWorktreesDialog
         repository={repository}
-        askForConfirmationOnWorktreeRemoval={true}
         onRemoveCleanWorktrees={async repo => {
           removedRepository = repo
-        }}
-        onConfirmWorktreeRemovalChanged={value => {
-          confirmationSetting = value
         }}
         onDismissed={() => {
           dismissed = true
@@ -44,7 +39,9 @@ describe('RemoveCleanWorktreesDialog', () => {
     )
 
     assert.ok(
-      screen.getByText(/tracked, untracked, or ignored files will be kept/)
+      screen.getByText(
+        /Local branches will be kept.*ignored files will be deleted/
+      )
     )
 
     fireEvent.click(
@@ -53,6 +50,5 @@ describe('RemoveCleanWorktreesDialog', () => {
 
     await waitFor(() => assert.equal(dismissed, true))
     assert.equal(removedRepository, repository)
-    assert.equal(confirmationSetting, true)
   })
 })

@@ -6,10 +6,15 @@ import { exec } from 'dugite'
 import { setupEmptyRepository } from '../../helpers/repositories'
 import { makeCommit } from '../../helpers/repository-scaffolding'
 import {
+  getPullRequestHeadSha,
+  getWorktreeRemovalStatus,
+  isPullRequestMergedIntoBranch,
   parseWorktreePorcelainOutput,
   isWorktreeClean,
   listWorktrees,
   listWorktreesFromGitDir,
+  removeIgnoredWorktreeFiles,
+  removeWorktree,
 } from '../../../src/lib/git'
 
 describe('git/worktree', () => {
@@ -356,6 +361,64 @@ describe('git/worktree', () => {
       await writeFile(Path.join(repo.path, '.env'), 'SECRET=value')
 
       assert.strictEqual(await isWorktreeClean(repo.path), false)
+      assert.strictEqual(
+        await getWorktreeRemovalStatus(repo.path),
+        'ignored-only'
+      )
+    })
+  })
+
+  describe('isPullRequestMergedIntoBranch', () => {
+    it('finds a squash merge by its pull request number', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [{ path: 'README', contents: 'hello' }],
+        commitMessage: 'Add worktree cleanup (#123)',
+      })
+
+      assert.equal(
+        await isPullRequestMergedIntoBranch(repo.path, 'main', 123),
+        true
+      )
+      assert.equal(
+        await isPullRequestMergedIntoBranch(repo.path, 'main', 456),
+        false
+      )
+    })
+  })
+
+  describe('getPullRequestHeadSha', () => {
+    it('reads the pull request head ref from a remote', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [{ path: 'README', contents: 'hello' }],
+      })
+      const head = (await exec(['rev-parse', 'HEAD'], repo.path)).stdout.trim()
+      await exec(['update-ref', 'refs/pull/123/head', head], repo.path)
+
+      assert.equal(await getPullRequestHeadSha(repo.path, repo.path, 123), head)
+      assert.equal(await getPullRequestHeadSha(repo.path, repo.path, 456), null)
+    })
+  })
+
+  describe('removeIgnoredWorktreeFiles', () => {
+    it('keeps the final dirty-worktree guard active', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [
+          { path: '.gitignore', contents: 'ignored\n' },
+          { path: 'README', contents: 'hello' },
+        ],
+      })
+      const worktreePath = Path.join(repo.path, '..', 'linked-worktree')
+      await exec(['worktree', 'add', worktreePath], repo.path)
+      t.after(() => rm(worktreePath, { recursive: true, force: true }))
+
+      await writeFile(Path.join(worktreePath, 'ignored'), 'generated')
+      await removeIgnoredWorktreeFiles(worktreePath)
+      await writeFile(Path.join(worktreePath, 'untracked'), 'important')
+
+      await assert.rejects(removeWorktree(repo.path, worktreePath))
     })
   })
 })
