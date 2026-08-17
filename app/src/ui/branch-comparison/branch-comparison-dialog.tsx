@@ -171,6 +171,10 @@ export class BranchComparisonDialog extends React.Component<IBranchComparisonDia
       return
     }
 
+    if (mergeStatus?.kind === ComputedAction.Loading) {
+      return
+    }
+
     const { changesetData } = commitSelection
     if (changesetData.files.length !== 0) {
       return

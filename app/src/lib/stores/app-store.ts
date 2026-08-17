@@ -715,6 +715,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private popupManager = new PopupManager()
 
   private branchComparisonGeneration = 0
+  private branchComparisonDiffGeneration = 0
 
   private pullRequestSuggestedNextAction:
     | PullRequestSuggestedNextAction
@@ -10049,12 +10050,30 @@ export class AppStore extends TypedBaseStore<IAppState> {
     showPopupWhenReady: boolean
   ) {
     const generation = ++this.branchComparisonGeneration
+    const emptyChangeSet = { files: [], linesAdded: 0, linesDeleted: 0 }
 
     if (baseBranch === null) {
       if (generation === this.branchComparisonGeneration) {
         this.showBranchComparisonPopupNoBaseBranch(repository, currentBranch)
       }
       return
+    }
+
+    if (!showPopupWhenReady) {
+      this.repositoryStateCache.initializeBranchComparisonState(repository, {
+        baseBranch,
+        commitSHAs: null,
+        commitSelection: {
+          shas: [],
+          shasInDiff: [],
+          isContiguous: true,
+          changesetData: emptyChangeSet,
+          file: null,
+          diff: null,
+        },
+        mergeStatus: { kind: ComputedAction.Loading },
+      })
+      this.emitUpdate()
     }
 
     const gitStore = this.gitStoreCache.get(repository)
@@ -10071,7 +10090,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const commitsBetweenBranches = comparisonCommits.map(c => c.sha)
 
     // A user may compare two branches with no changes between them.
-    const emptyChangeSet = { files: [], linesAdded: 0, linesDeleted: 0 }
     const changesetData =
       commitsBetweenBranches.length > 0
         ? await gitStore.performFailableOperation(() =>
@@ -10197,6 +10215,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     file: CommittedFileChange,
     generation = this.branchComparisonGeneration
   ): Promise<void> {
+    const diffGeneration = ++this.branchComparisonDiffGeneration
     const { branchesState, branchComparisonState } =
       this.repositoryStateCache.get(repository)
 
@@ -10252,6 +10271,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     if (
       generation !== this.branchComparisonGeneration ||
+      diffGeneration !== this.branchComparisonDiffGeneration ||
       selectedFileAfterDiffLoad?.id !== file.id ||
       baseBranchAfterDiffLoad?.ref !== baseBranch.ref ||
       tipAfterDiffLoad.kind !== TipState.Valid ||

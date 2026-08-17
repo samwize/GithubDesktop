@@ -23,7 +23,7 @@ export class BranchComparisonMergeStatus extends React.Component<IBranchComparis
       case ComputedAction.Loading:
         return (
           <span className="branch-comparison-merge-status-loading">
-            <strong>Checking mergeability&hellip;</strong>
+            <strong>Loading branch comparison&hellip;</strong>
           </span>
         )
       case ComputedAction.Invalid:
