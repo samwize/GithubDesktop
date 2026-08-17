@@ -142,7 +142,7 @@ export class BranchComparisonDialog extends React.Component<IBranchComparisonDia
     const { diff, file, changesetData, shas } = commitSelection
     const { files } = changesetData
 
-    if (shas.length === 0) {
+    if (shas.length === 0 || files.length === 0) {
       return
     }
 
@@ -171,15 +171,15 @@ export class BranchComparisonDialog extends React.Component<IBranchComparisonDia
       return
     }
 
-    const { shas } = commitSelection
-    if (shas.length !== 0) {
+    const { changesetData } = commitSelection
+    if (changesetData.files.length !== 0) {
       return
     }
     const hasMergeBase = mergeStatus?.kind !== ComputedAction.Invalid
     const message = hasMergeBase ? (
       <>
-        <Ref>{baseBranch.name}</Ref> is up to date with all commits from{' '}
-        <Ref>{currentBranch.name}</Ref>.
+        <Ref>{currentBranch.name}</Ref> has no file changes to merge into{' '}
+        <Ref>{baseBranch.name}</Ref>.
       </>
     ) : (
       <>

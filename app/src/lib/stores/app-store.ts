@@ -714,6 +714,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
   /** A service for managing the stack of open popups */
   private popupManager = new PopupManager()
 
+  private branchComparisonGeneration = 0
+
   private pullRequestSuggestedNextAction:
     | PullRequestSuggestedNextAction
     | undefined = undefined
@@ -4474,6 +4476,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     if (popupType === undefined) {
+      if (currentPopup.type === PopupType.BranchComparison) {
+        this.branchComparisonGeneration++
+      }
       this.popupManager.removePopup(currentPopup)
     } else {
       if (currentPopup.type !== popupType) {
@@ -4484,6 +4489,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
         this._completeOpenInDesktop(() => Promise.resolve(null))
       }
 
+      if (currentPopup.type === PopupType.BranchComparison) {
+        this.branchComparisonGeneration++
+      }
+
       this.popupManager.removePopupByType(popupType)
     }
 
@@ -4492,8 +4501,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   /** This shouldn't be called directly. See `Dispatcher`. */
   public _closePopupById(popupId: number) {
-    if (this.popupManager.currentPopup === null) {
+    const currentPopup = this.popupManager.currentPopup
+    if (currentPopup === null) {
       return
+    }
+
+    if (
+      currentPopup.id === popupId &&
+      currentPopup.type === PopupType.BranchComparison
+    ) {
+      this.branchComparisonGeneration++
     }
 
     this.popupManager.removePopupById(popupId)
@@ -10017,16 +10034,26 @@ export class AppStore extends TypedBaseStore<IAppState> {
         ? defaultBranch
         : fallbackBaseBranch ?? null
 
-    this._initializeBranchComparison(repository, baseBranch, currentBranch)
+    this._initializeBranchComparison(
+      repository,
+      baseBranch,
+      currentBranch,
+      true
+    )
   }
 
   private async _initializeBranchComparison(
     repository: Repository,
     baseBranch: Branch | null,
-    currentBranch: Branch
+    currentBranch: Branch,
+    showPopupWhenReady: boolean
   ) {
+    const generation = ++this.branchComparisonGeneration
+
     if (baseBranch === null) {
-      this.showBranchComparisonPopupNoBaseBranch(repository, currentBranch)
+      if (generation === this.branchComparisonGeneration) {
+        this.showBranchComparisonPopupNoBaseBranch(repository, currentBranch)
+      }
       return
     }
 
@@ -10036,6 +10063,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
       baseBranch,
       currentBranch
     )
+
+    if (generation !== this.branchComparisonGeneration) {
+      return
+    }
 
     const commitsBetweenBranches = comparisonCommits.map(c => c.sha)
 
@@ -10054,6 +10085,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
         : emptyChangeSet
 
     if (changesetData === undefined) {
+      return
+    }
+
+    if (generation !== this.branchComparisonGeneration) {
       return
     }
 
@@ -10089,7 +10124,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.setupBranchComparisonMergeTreePromise(
         repository,
         baseBranch,
-        currentBranch
+        currentBranch,
+        generation
       )
     }
 
@@ -10100,7 +10136,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
       )
     }
 
-    this.showBranchComparisonPopup(repository, currentBranch)
+    if (showPopupWhenReady && generation === this.branchComparisonGeneration) {
+      this.showBranchComparisonPopup(repository, currentBranch)
+    }
   }
 
   public showBranchComparisonPopupNoBaseBranch(
@@ -10156,7 +10194,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   public async _changeBranchComparisonFileSelection(
     repository: Repository,
-    file: CommittedFileChange
+    file: CommittedFileChange,
+    generation = this.branchComparisonGeneration
   ): Promise<void> {
     const { branchesState, branchComparisonState } =
       this.repositoryStateCache.get(repository)
@@ -10207,9 +10246,17 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const { branchComparisonState: stateAfterLoad } =
       this.repositoryStateCache.get(repository)
     const selectedFileAfterDiffLoad = stateAfterLoad?.commitSelection?.file
+    const baseBranchAfterDiffLoad = stateAfterLoad?.baseBranch
+    const tipAfterDiffLoad =
+      this.repositoryStateCache.get(repository).branchesState.tip
 
-    if (selectedFileAfterDiffLoad?.id !== file.id) {
-      // this means user has clicked on another file since loading the diff
+    if (
+      generation !== this.branchComparisonGeneration ||
+      selectedFileAfterDiffLoad?.id !== file.id ||
+      baseBranchAfterDiffLoad?.ref !== baseBranch.ref ||
+      tipAfterDiffLoad.kind !== TipState.Valid ||
+      tipAfterDiffLoad.branch.ref !== currentBranch.ref
+    ) {
       return
     }
 
@@ -10263,16 +10310,21 @@ export class AppStore extends TypedBaseStore<IAppState> {
       return
     }
 
-    this._initializeBranchComparison(repository, baseBranch, tip.branch)
+    this._initializeBranchComparison(repository, baseBranch, tip.branch, false)
   }
 
   private setupBranchComparisonMergeTreePromise(
     repository: Repository,
     baseBranch: Branch,
-    compareBranch: Branch
+    compareBranch: Branch,
+    generation: number
   ) {
     this.setupMergabilityPromise(repository, baseBranch, compareBranch).then(
       (mergeStatus: MergeTreeResult | null) => {
+        if (generation !== this.branchComparisonGeneration) {
+          return
+        }
+
         this.repositoryStateCache.updateBranchComparisonState(
           repository,
           () => ({ mergeStatus })
