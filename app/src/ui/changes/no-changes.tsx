@@ -681,10 +681,12 @@ export class NoChanges extends React.Component<
     const title = `Create a Pull Request from your current branch`
     const buttonText = `Create Pull Request`
 
-    const previewPullMenuItem = this.getMenuItemInfo('preview-pull-request')
+    const previewPullMenuItem = this.getMenuItemInfo('preview-branch-changes')
 
     if (previewPullMenuItem === undefined) {
-      log.error(`Could not find matching menu item for 'preview-pull-request'`)
+      log.error(
+        `Could not find matching menu item for 'preview-branch-changes'`
+      )
       return null
     }
 
@@ -700,18 +702,18 @@ export class NoChanges extends React.Component<
       onClick: this.onCreatePullRequestClicked,
     }
 
-    const previewPullRequestAction: IDropdownSuggestedActionOption = {
-      title: `Preview the Pull Request from your current branch`,
-      label: 'Preview Pull Request',
+    const previewBranchChangesAction: IDropdownSuggestedActionOption = {
+      title: `Preview changes from your current branch`,
+      label: 'Preview Branch Changes',
       description: (
         <>
-          The current branch (<Ref>{tip.branch.name}</Ref>) is already published
-          to GitHub. Preview the changes this pull request will have before
-          proposing your changes.
+          Compare every committed change on the current branch (
+          <Ref>{tip.branch.name}</Ref>) against another branch without creating
+          a pull request.
         </>
       ),
-      id: PullRequestSuggestedNextAction.PreviewPullRequest,
-      menuItemId: 'preview-pull-request',
+      id: PullRequestSuggestedNextAction.PreviewBranchChanges,
+      menuItemId: 'preview-branch-changes',
       discoverabilityContent:
         this.renderDiscoverabilityElements(previewPullMenuItem),
       disabled: !previewPullMenuItem.enabled,
@@ -721,7 +723,7 @@ export class NoChanges extends React.Component<
       <DropdownSuggestedAction
         key="pull-request-action"
         className="pull-request-action"
-        suggestedActions={[previewPullRequestAction, createPullRequestAction]}
+        suggestedActions={[previewBranchChangesAction, createPullRequestAction]}
         selectedActionValue={this.props.pullRequestSuggestedNextAction}
         onSuggestedActionChanged={this.onPullRequestSuggestedActionChanged}
       />

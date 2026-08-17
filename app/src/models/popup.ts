@@ -94,7 +94,7 @@ export enum PopupType {
   DiscardChangesRetry = 'DiscardChangesRetry',
   PullRequestReview = 'PullRequestReview',
   UnreachableCommits = 'UnreachableCommits',
-  StartPullRequest = 'StartPullRequest',
+  BranchComparison = 'BranchComparison',
   Error = 'Error',
   InstallingUpdate = 'InstallingUpdate',
   TestNotifications = 'TestNotifications',
@@ -424,17 +424,15 @@ export type PopupDetail =
       selectedTab: UnreachableCommitsTab
     }
   | {
-      type: PopupType.StartPullRequest
-      prBaseBranches: ReadonlyArray<Branch>
+      type: PopupType.BranchComparison
+      baseBranches: ReadonlyArray<Branch>
       currentBranch: Branch
       defaultBranch: Branch | null
       externalEditorLabel?: string
       imageDiffType: ImageDiffType
-      prRecentBaseBranches: ReadonlyArray<Branch>
+      recentBaseBranches: ReadonlyArray<Branch>
       repository: Repository
-      nonLocalCommitSHA: string | null
       showSideBySideDiff: boolean
-      currentBranchHasPullRequest: boolean
     }
   | {
       type: PopupType.Error

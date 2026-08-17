@@ -11,7 +11,6 @@ import {
   RepositoriesStore,
   SignInResult,
   SignInStore,
-  UpstreamRemoteName,
 } from '.'
 import type { CopilotFeature, CopilotModelSelections } from './copilot-store'
 import { CommitMessageGenerationCancelledError } from './copilot-store'
@@ -454,8 +453,8 @@ const commitSummaryWidthConfigKey: string = 'commit-summary-width'
 const defaultStashedFilesWidth: number = 250
 const stashedFilesWidthConfigKey: string = 'stashed-files-width'
 
-const defaultPullRequestFileListWidth: number = 250
-const pullRequestFileListConfigKey: string = 'pull-request-files-width'
+const defaultBranchComparisonFileListWidth: number = 250
+const branchComparisonFileListConfigKey: string = 'pull-request-files-width'
 
 const defaultBranchDropdownWidth: number = 230
 const branchDropdownWidthConfigKey: string = 'branch-dropdown-width'
@@ -504,8 +503,8 @@ const hideWhitespaceInChangesDiffDefault = false
 const hideWhitespaceInChangesDiffKey = 'hide-whitespace-in-changes-diff'
 const hideWhitespaceInHistoryDiffDefault = false
 const hideWhitespaceInHistoryDiffKey = 'hide-whitespace-in-diff'
-const hideWhitespaceInPullRequestDiffDefault = false
-const hideWhitespaceInPullRequestDiffKey =
+const hideWhitespaceInBranchComparisonDiffDefault = false
+const hideWhitespaceInBranchComparisonDiffKey =
   'hide-whitespace-in-pull-request-diff'
 
 const commitSpellcheckEnabledDefault = true
@@ -621,7 +620,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private sidebarWidth = constrain(defaultSidebarWidth)
   private commitSummaryWidth = constrain(defaultCommitSummaryWidth)
   private stashedFilesWidth = constrain(defaultStashedFilesWidth)
-  private pullRequestFileListWidth = constrain(defaultPullRequestFileListWidth)
+  private branchComparisonFileListWidth = constrain(
+    defaultBranchComparisonFileListWidth
+  )
   private branchDropdownWidth = constrain(defaultBranchDropdownWidth)
   private worktreeDropdownWidth = constrain(defaultWorktreeDropdownWidth)
   private pushPullButtonWidth = constrain(defaultPushPullButtonWidth)
@@ -655,8 +656,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     hideWhitespaceInChangesDiffDefault
   private hideWhitespaceInHistoryDiff: boolean =
     hideWhitespaceInHistoryDiffDefault
-  private hideWhitespaceInPullRequestDiff: boolean =
-    hideWhitespaceInPullRequestDiffDefault
+  private hideWhitespaceInBranchComparisonDiff: boolean =
+    hideWhitespaceInBranchComparisonDiffDefault
   /** Whether or not the spellchecker is enabled for commit summary and description */
   private commitSpellcheckEnabled: boolean = commitSpellcheckEnabledDefault
   private showSideBySideDiff: boolean = ShowSideBySideDiffDefault
@@ -1224,7 +1225,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       pushPullButtonWidth: this.pushPullButtonWidth,
       commitSummaryWidth: this.commitSummaryWidth,
       stashedFilesWidth: this.stashedFilesWidth,
-      pullRequestFilesListWidth: this.pullRequestFileListWidth,
+      branchComparisonFilesListWidth: this.branchComparisonFileListWidth,
       appMenuState: this.appMenu ? this.appMenu.openMenus : [],
       highlightAccessKeys: this.highlightAccessKeys,
       isUpdateAvailableBannerVisible: this.isUpdateAvailableBannerVisible,
@@ -1252,7 +1253,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
       imageDiffType: this.imageDiffType,
       hideWhitespaceInChangesDiff: this.hideWhitespaceInChangesDiff,
       hideWhitespaceInHistoryDiff: this.hideWhitespaceInHistoryDiff,
-      hideWhitespaceInPullRequestDiff: this.hideWhitespaceInPullRequestDiff,
+      hideWhitespaceInBranchComparisonDiff:
+        this.hideWhitespaceInBranchComparisonDiff,
       showSideBySideDiff: this.showSideBySideDiff,
       selectedShell: this.selectedShell,
       repositoryFilterText: this.repositoryFilterText,
@@ -2399,8 +2401,11 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.stashedFilesWidth = constrain(
       getNumber(stashedFilesWidthConfigKey, defaultStashedFilesWidth)
     )
-    this.pullRequestFileListWidth = constrain(
-      getNumber(pullRequestFileListConfigKey, defaultPullRequestFileListWidth)
+    this.branchComparisonFileListWidth = constrain(
+      getNumber(
+        branchComparisonFileListConfigKey,
+        defaultBranchComparisonFileListWidth
+      )
     )
     this.branchDropdownWidth = constrain(
       getNumber(branchDropdownWidthConfigKey, defaultBranchDropdownWidth)
@@ -2414,7 +2419,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.updateResizableConstraints()
     // TODO: Initiliaze here for now... maybe move to dialog mounting
-    this.updatePullRequestResizableConstraints()
+    this.updateBranchComparisonResizableConstraints()
 
     this.askToMoveToApplicationsFolderSetting = getBoolean(
       askToMoveToApplicationsFolderKey,
@@ -2513,8 +2518,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
       hideWhitespaceInHistoryDiffKey,
       false
     )
-    this.hideWhitespaceInPullRequestDiff = getBoolean(
-      hideWhitespaceInPullRequestDiffKey,
+    this.hideWhitespaceInBranchComparisonDiff = getBoolean(
+      hideWhitespaceInBranchComparisonDiffKey,
       false
     )
     this.commitSpellcheckEnabled = getBoolean(
@@ -2736,23 +2741,11 @@ export class AppStore extends TypedBaseStore<IAppState> {
     )
   }
 
-  /**
-   * Calculate the constraints of the resizable pane in the pull request dialog
-   * whenever the window dimensions change.
-   */
-  private updatePullRequestResizableConstraints() {
-    // TODO: Get width of PR dialog -> determine if we will have default width
-    // for pr dialog. The goal is for it expand to fill some percent of
+  /** Calculate the branch comparison file-list constraints. */
+  private updateBranchComparisonResizableConstraints() {
+    // TODO: Get the dialog width. The goal is for it to fill some percent of
     // available window so it will change on window resize. We may have some max
-    // value and min value of where to derive a default is we cannot obtain the
-    // width for some reason (like initialization nad no pr dialog is open)
-    // Thoughts -> ß
-    // 1. Use dialog id to grab dialog if exists, else use default
-    // 2. Pass dialog width up when and call this contrainst on dialog mounting
-    //    to initialize and subscribe to window resize inside dialog to be able
-    //    to pass up dialog width on window resize.
-
-    // Get the width of the dialog
+    // value and min value to derive a default if the dialog isn't open.
     const available = 850
     const dialogPadding = 20
 
@@ -2764,8 +2757,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const diffPaneMinWidth = 150
     const filesListMax = available - dialogPadding - diffPaneMinWidth
 
-    this.pullRequestFileListWidth = constrain(
-      this.pullRequestFileListWidth,
+    this.branchComparisonFileListWidth = constrain(
+      this.branchComparisonFileListWidth,
       100,
       filesListMax
     )
@@ -8022,16 +8015,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
-  public _setHideWhitespaceInPullRequestDiff(
+  public _setHideWhitespaceInBranchComparisonDiff(
     hideWhitespaceInDiff: boolean,
     repository: Repository,
     file: CommittedFileChange | null
   ) {
-    setBoolean(hideWhitespaceInPullRequestDiffKey, hideWhitespaceInDiff)
-    this.hideWhitespaceInPullRequestDiff = hideWhitespaceInDiff
+    setBoolean(hideWhitespaceInBranchComparisonDiffKey, hideWhitespaceInDiff)
+    this.hideWhitespaceInBranchComparisonDiff = hideWhitespaceInDiff
 
     if (file !== null) {
-      this._changePullRequestFileSelection(repository, file)
+      this._changeBranchComparisonFileSelection(repository, file)
     }
   }
 
@@ -10006,8 +9999,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     })
   }
 
-  public async _startPullRequest(repository: Repository) {
-    const { tip, defaultBranch } =
+  public async _startBranchComparison(repository: Repository) {
+    const { tip, defaultBranch, allBranches } =
       this.repositoryStateCache.get(repository).branchesState
 
     if (tip.kind !== TipState.Valid) {
@@ -10016,27 +10009,35 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     const currentBranch = tip.branch
-    this._initializePullRequestPreview(repository, defaultBranch, currentBranch)
+    const fallbackBaseBranch = allBranches.find(
+      branch => branch.name !== currentBranch.name
+    )
+    const baseBranch =
+      defaultBranch !== null && defaultBranch.name !== currentBranch.name
+        ? defaultBranch
+        : fallbackBaseBranch ?? null
+
+    this._initializeBranchComparison(repository, baseBranch, currentBranch)
   }
 
-  private async _initializePullRequestPreview(
+  private async _initializeBranchComparison(
     repository: Repository,
     baseBranch: Branch | null,
     currentBranch: Branch
   ) {
     if (baseBranch === null) {
-      this.showPullRequestPopupNoBaseBranch(repository, currentBranch)
+      this.showBranchComparisonPopupNoBaseBranch(repository, currentBranch)
       return
     }
 
     const gitStore = this.gitStoreCache.get(repository)
 
-    const pullRequestCommits = await gitStore.getCommitsBetweenBranches(
+    const comparisonCommits = await gitStore.getCommitsBetweenBranches(
       baseBranch,
       currentBranch
     )
 
-    const commitsBetweenBranches = pullRequestCommits.map(c => c.sha)
+    const commitsBetweenBranches = comparisonCommits.map(c => c.sha)
 
     // A user may compare two branches with no changes between them.
     const emptyChangeSet = { files: [], linesAdded: 0, linesDeleted: 0 }
@@ -10061,7 +10062,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     // can't be merged.
     const commitSHAs = hasMergeBase ? commitsBetweenBranches : []
 
-    this.repositoryStateCache.initializePullRequestState(repository, {
+    this.repositoryStateCache.initializeBranchComparisonState(repository, {
       baseBranch,
       commitSHAs,
       commitSelection: {
@@ -10085,24 +10086,28 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.emitUpdate()
 
     if (commitSHAs.length > 0) {
-      this.setupPRMergeTreePromise(repository, baseBranch, currentBranch)
+      this.setupBranchComparisonMergeTreePromise(
+        repository,
+        baseBranch,
+        currentBranch
+      )
     }
 
     if (changesetData !== null && changesetData.files.length > 0) {
-      await this._changePullRequestFileSelection(
+      await this._changeBranchComparisonFileSelection(
         repository,
         changesetData.files[0]
       )
     }
 
-    this.showPullRequestPopup(repository, currentBranch, commitSHAs)
+    this.showBranchComparisonPopup(repository, currentBranch)
   }
 
-  public showPullRequestPopupNoBaseBranch(
+  public showBranchComparisonPopupNoBaseBranch(
     repository: Repository,
     currentBranch: Branch
   ) {
-    this.repositoryStateCache.initializePullRequestState(repository, {
+    this.repositoryStateCache.initializeBranchComparisonState(repository, {
       baseBranch: null,
       commitSHAs: null,
       commitSelection: null,
@@ -10111,81 +10116,65 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.emitUpdate()
 
-    this.showPullRequestPopup(repository, currentBranch, [])
+    this.showBranchComparisonPopup(repository, currentBranch)
   }
 
-  public showPullRequestPopup(
+  public showBranchComparisonPopup(
     repository: Repository,
-    currentBranch: Branch,
-    commitSHAs: ReadonlyArray<string>
+    currentBranch: Branch
   ) {
-    if (this.popupManager.areTherePopupsOfType(PopupType.StartPullRequest)) {
+    if (this.popupManager.areTherePopupsOfType(PopupType.BranchComparison)) {
       return
     }
 
     this.statsStore.increment('previewedPullRequestCount')
 
-    const { branchesState, localCommitSHAs } =
-      this.repositoryStateCache.get(repository)
-    const { allBranches, recentBranches, defaultBranch, currentPullRequest } =
-      branchesState
-    const gitStore = this.gitStoreCache.get(repository)
-    /*  We only want branches that are also on dotcom such that, when we ask a
-     *  user to create a pull request, the base branch also exists on dotcom.
-     */
-    const remote = isForkedRepositoryContributingToParent(repository)
-      ? UpstreamRemoteName
-      : gitStore.defaultRemote?.name
-    const prBaseBranches = allBranches.filter(
-      b => b.upstreamRemoteName === remote || b.remoteName === remote
+    const { allBranches, recentBranches, defaultBranch } =
+      this.repositoryStateCache.get(repository).branchesState
+    const baseBranches = allBranches.filter(
+      branch => branch.name !== currentBranch.name
     )
-    const prRecentBaseBranches = recentBranches.filter(
-      b => b.upstreamRemoteName === remote || b.remoteName === remote
+    const recentBaseBranches = recentBranches.filter(
+      branch => branch.name !== currentBranch.name
     )
     const { imageDiffType, selectedExternalEditor, showSideBySideDiff } =
       this.getState()
 
-    const nonLocalCommitSHA =
-      commitSHAs.length > 0 && !localCommitSHAs.includes(commitSHAs[0])
-        ? commitSHAs[0]
-        : null
-
     this._showPopup({
-      type: PopupType.StartPullRequest,
-      prBaseBranches,
-      prRecentBaseBranches,
+      type: PopupType.BranchComparison,
+      baseBranches,
+      recentBaseBranches,
       currentBranch,
-      defaultBranch,
+      defaultBranch:
+        defaultBranch?.name === currentBranch.name ? null : defaultBranch,
       imageDiffType,
       repository,
       externalEditorLabel: selectedExternalEditor ?? undefined,
-      nonLocalCommitSHA,
       showSideBySideDiff,
-      currentBranchHasPullRequest: currentPullRequest !== null,
     })
   }
 
-  public async _changePullRequestFileSelection(
+  public async _changeBranchComparisonFileSelection(
     repository: Repository,
     file: CommittedFileChange
   ): Promise<void> {
-    const { branchesState, pullRequestState } =
+    const { branchesState, branchComparisonState } =
       this.repositoryStateCache.get(repository)
 
     if (
       branchesState.tip.kind !== TipState.Valid ||
-      pullRequestState === null
+      branchComparisonState === null
     ) {
       return
     }
 
     const currentBranch = branchesState.tip.branch
-    const { baseBranch, commitSHAs } = pullRequestState
+    const { baseBranch, commitSHAs } = branchComparisonState
     if (commitSHAs === null || baseBranch === null) {
       return
     }
 
-    this.repositoryStateCache.updatePullRequestCommitSelection(
+    this.repositoryStateCache.updateBranchComparisonCommitSelection(
       repository,
       () => ({
         file,
@@ -10210,12 +10199,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
             file,
             baseBranch.name,
             currentBranch.name,
-            this.hideWhitespaceInPullRequestDiff,
+            this.hideWhitespaceInBranchComparisonDiff,
             commitSHAs[0]
           )
         )) ?? null
 
-    const { pullRequestState: stateAfterLoad } =
+    const { branchComparisonState: stateAfterLoad } =
       this.repositoryStateCache.get(repository)
     const selectedFileAfterDiffLoad = stateAfterLoad?.commitSelection?.file
 
@@ -10224,7 +10213,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       return
     }
 
-    this.repositoryStateCache.updatePullRequestCommitSelection(
+    this.repositoryStateCache.updateBranchComparisonCommitSelection(
       repository,
       () => ({
         diff,
@@ -10234,35 +10223,35 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.emitUpdate()
   }
 
-  public _setPullRequestFileListWidth(width: number): Promise<void> {
-    this.pullRequestFileListWidth = {
-      ...this.pullRequestFileListWidth,
+  public _setBranchComparisonFileListWidth(width: number): Promise<void> {
+    this.branchComparisonFileListWidth = {
+      ...this.branchComparisonFileListWidth,
       value: width,
     }
-    setNumber(pullRequestFileListConfigKey, width)
-    this.updatePullRequestResizableConstraints()
+    setNumber(branchComparisonFileListConfigKey, width)
+    this.updateBranchComparisonResizableConstraints()
     this.emitUpdate()
 
     return Promise.resolve()
   }
 
-  public _resetPullRequestFileListWidth(): Promise<void> {
-    this.pullRequestFileListWidth = {
-      ...this.pullRequestFileListWidth,
-      value: defaultPullRequestFileListWidth,
+  public _resetBranchComparisonFileListWidth(): Promise<void> {
+    this.branchComparisonFileListWidth = {
+      ...this.branchComparisonFileListWidth,
+      value: defaultBranchComparisonFileListWidth,
     }
-    localStorage.removeItem(pullRequestFileListConfigKey)
-    this.updatePullRequestResizableConstraints()
+    localStorage.removeItem(branchComparisonFileListConfigKey)
+    this.updateBranchComparisonResizableConstraints()
     this.emitUpdate()
 
     return Promise.resolve()
   }
 
-  public _updatePullRequestBaseBranch(
+  public _updateBranchComparisonBaseBranch(
     repository: Repository,
     baseBranch: Branch
   ) {
-    const { branchesState, pullRequestState } =
+    const { branchesState, branchComparisonState } =
       this.repositoryStateCache.get(repository)
     const { tip } = branchesState
 
@@ -10270,25 +10259,24 @@ export class AppStore extends TypedBaseStore<IAppState> {
       return
     }
 
-    if (pullRequestState === null) {
-      // This would mean the user submitted PR after requesting base branch
-      // update.
+    if (branchComparisonState === null) {
       return
     }
 
-    this._initializePullRequestPreview(repository, baseBranch, tip.branch)
+    this._initializeBranchComparison(repository, baseBranch, tip.branch)
   }
 
-  private setupPRMergeTreePromise(
+  private setupBranchComparisonMergeTreePromise(
     repository: Repository,
     baseBranch: Branch,
     compareBranch: Branch
   ) {
     this.setupMergabilityPromise(repository, baseBranch, compareBranch).then(
       (mergeStatus: MergeTreeResult | null) => {
-        this.repositoryStateCache.updatePullRequestState(repository, () => ({
-          mergeStatus,
-        }))
+        this.repositoryStateCache.updateBranchComparisonState(
+          repository,
+          () => ({ mergeStatus })
+        )
         this.emitUpdate()
       }
     )

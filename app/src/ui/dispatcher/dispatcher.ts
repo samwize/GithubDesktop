@@ -2407,13 +2407,13 @@ export class Dispatcher {
     )
   }
 
-  /** Change the hide whitespace in pull request diff setting */
-  public onHideWhitespaceInPullRequestDiffChanged(
+  /** Change the hide-whitespace setting for branch comparison diffs. */
+  public onHideWhitespaceInBranchComparisonDiffChanged(
     hideWhitespaceInDiff: boolean,
     repository: Repository,
     file: CommittedFileChange | null = null
   ) {
-    this.appStore._setHideWhitespaceInPullRequestDiff(
+    this.appStore._setHideWhitespaceInBranchComparisonDiff(
       hideWhitespaceInDiff,
       repository,
       file
@@ -4122,36 +4122,33 @@ export class Dispatcher {
     })
   }
 
-  public startPullRequest(repository: Repository) {
-    this.appStore._startPullRequest(repository)
+  public startBranchComparison(repository: Repository) {
+    this.appStore._startBranchComparison(repository)
   }
 
-  /**
-   * Change the selected changed file of the current pull request state.
-   */
-  public changePullRequestFileSelection(
+  /** Change the selected file in the branch comparison. */
+  public changeBranchComparisonFileSelection(
     repository: Repository,
     file: CommittedFileChange
   ): Promise<void> {
-    return this.appStore._changePullRequestFileSelection(repository, file)
+    return this.appStore._changeBranchComparisonFileSelection(repository, file)
   }
 
-  /**
-   * Set the width of the file list column in the pull request files changed
-   */
-  public setPullRequestFileListWidth(width: number): Promise<void> {
-    return this.appStore._setPullRequestFileListWidth(width)
+  /** Set the branch comparison file-list width. */
+  public setBranchComparisonFileListWidth(width: number): Promise<void> {
+    return this.appStore._setBranchComparisonFileListWidth(width)
   }
 
-  /**
-   * Reset the width of the file list column in the pull request files changed
-   */
-  public resetPullRequestFileListWidth(): Promise<void> {
-    return this.appStore._resetPullRequestFileListWidth()
+  /** Reset the branch comparison file-list width. */
+  public resetBranchComparisonFileListWidth(): Promise<void> {
+    return this.appStore._resetBranchComparisonFileListWidth()
   }
 
-  public updatePullRequestBaseBranch(repository: Repository, branch: Branch) {
-    this.appStore._updatePullRequestBaseBranch(repository, branch)
+  public updateBranchComparisonBaseBranch(
+    repository: Repository,
+    branch: Branch
+  ) {
+    this.appStore._updateBranchComparisonBaseBranch(repository, branch)
   }
 
   /**

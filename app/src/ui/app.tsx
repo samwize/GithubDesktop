@@ -176,7 +176,7 @@ import { getRepositoryType } from '../lib/git'
 import { SSHUserPassword } from './ssh/ssh-user-password'
 import { showContextualMenu } from '../lib/menu-item'
 import { UnreachableCommitsDialog } from './history/unreachable-commits-dialog'
-import { OpenPullRequestDialog } from './open-pull-request/open-pull-request-dialog'
+import { BranchComparisonDialog } from './branch-comparison/branch-comparison-dialog'
 import { sendNonFatalException } from '../lib/helpers/non-fatal-exception'
 import { ICustomIntegration } from '../lib/custom-integration'
 import { createCommitURL } from '../lib/commit-url'
@@ -593,8 +593,8 @@ export class App extends React.Component<IAppProps, IAppState> {
         return this.goToCommitMessage()
       case 'open-pull-request':
         return this.openPullRequest()
-      case 'preview-pull-request':
-        return this.startPullRequest()
+      case 'preview-branch-changes':
+        return this.startBranchComparison()
       case 'install-darwin-cli':
         return this.props.dispatcher.installDarwinCLI()
       case 'install-windows-cli':
@@ -2607,55 +2607,49 @@ export class App extends React.Component<IAppProps, IAppState> {
           />
         )
       }
-      case PopupType.StartPullRequest: {
-        // Intentionally chose to get the current pull request state  on
-        // rerender because state variables such as file selection change
-        // via the dispatcher.
-        const pullRequestState = this.getPullRequestState()
-        if (pullRequestState === null) {
-          // This shouldn't happen..
+      case PopupType.BranchComparison: {
+        // Read the latest state on each render because file selection changes
+        // through the dispatcher.
+        const branchComparisonState = this.getBranchComparisonState()
+        if (branchComparisonState === null) {
           sendNonFatalException(
-            'FailedToStartPullRequest',
-            new Error(
-              'Failed to start pull request because pull request state was null'
-            )
+            'FailedToStartBranchComparison',
+            new Error('Failed to start because comparison state was null')
           )
           return null
         }
 
-        const { pullRequestFilesListWidth, hideWhitespaceInPullRequestDiff } =
-          this.state
+        const {
+          branchComparisonFilesListWidth,
+          hideWhitespaceInBranchComparisonDiff,
+        } = this.state
 
         const {
-          prBaseBranches,
+          baseBranches,
           currentBranch,
           defaultBranch,
           imageDiffType,
           externalEditorLabel,
-          nonLocalCommitSHA,
-          prRecentBaseBranches,
+          recentBaseBranches,
           repository,
           showSideBySideDiff,
-          currentBranchHasPullRequest,
         } = popup
 
         return (
-          <OpenPullRequestDialog
-            key="open-pull-request"
-            prBaseBranches={prBaseBranches}
+          <BranchComparisonDialog
+            key="branch-comparison"
+            baseBranches={baseBranches}
             currentBranch={currentBranch}
             defaultBranch={defaultBranch}
             dispatcher={this.props.dispatcher}
-            fileListWidth={pullRequestFilesListWidth}
-            hideWhitespaceInDiff={hideWhitespaceInPullRequestDiff}
+            fileListWidth={branchComparisonFilesListWidth}
+            hideWhitespaceInDiff={hideWhitespaceInBranchComparisonDiff}
             imageDiffType={imageDiffType}
-            nonLocalCommitSHA={nonLocalCommitSHA}
-            pullRequestState={pullRequestState}
-            prRecentBaseBranches={prRecentBaseBranches}
+            branchComparisonState={branchComparisonState}
+            recentBaseBranches={recentBaseBranches}
             repository={repository}
             externalEditorLabel={externalEditorLabel}
             showSideBySideDiff={showSideBySideDiff}
-            currentBranchHasPullRequest={currentBranchHasPullRequest}
             onDismissed={onPopupDismissedFn}
             onOpenInExternalEditor={this.onOpenInExternalEditor}
           />
@@ -3013,7 +3007,7 @@ export class App extends React.Component<IAppProps, IAppState> {
     this.props.dispatcher.setConfirmCommitFilteredChanges(value)
   }
 
-  private getPullRequestState() {
+  private getBranchComparisonState() {
     const { selectedState } = this.state
     if (
       selectedState == null ||
@@ -3022,7 +3016,7 @@ export class App extends React.Component<IAppProps, IAppState> {
       return null
     }
 
-    return selectedState.state.pullRequestState
+    return selectedState.state.branchComparisonState
   }
 
   private openBypassPushProtection = (secret: ISecretScanResult) => {
@@ -3647,14 +3641,14 @@ export class App extends React.Component<IAppProps, IAppState> {
     }
   }
 
-  private startPullRequest = () => {
+  private startBranchComparison = () => {
     const state = this.state.selectedState
 
     if (state == null || state.type !== SelectionType.Repository) {
       return
     }
 
-    this.props.dispatcher.startPullRequest(state.repository)
+    this.props.dispatcher.startBranchComparison(state.repository)
   }
 
   private openCreatePullRequestInBrowser = (

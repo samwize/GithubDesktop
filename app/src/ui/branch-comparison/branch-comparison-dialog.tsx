@@ -1,30 +1,31 @@
 import * as React from 'react'
-import { IConstrainedValue, IPullRequestState } from '../../lib/app-state'
-import { getDotComAPIEndpoint } from '../../lib/api'
+import { IConstrainedValue, IBranchComparisonState } from '../../lib/app-state'
 import { Branch } from '../../models/branch'
 import { ImageDiffType } from '../../models/diff'
 import { Repository } from '../../models/repository'
 import { DialogFooter, OkCancelButtonGroup, Dialog } from '../dialog'
+import { DialogHeader } from '../dialog/header'
 import { Dispatcher } from '../dispatcher'
 import { Ref } from '../lib/ref'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
 import {
-  OpenPullRequestDialogHeader,
-  OpenPullRequestDialogId,
-} from './open-pull-request-header'
-import { PullRequestFilesChanged } from './pull-request-files-changed'
-import { PullRequestMergeStatus } from './pull-request-merge-status'
+  BranchComparisonDialogHeader,
+  BranchComparisonDialogId,
+  BranchComparisonDialogTitle,
+} from './branch-comparison-header'
+import { BranchComparisonFilesChanged } from './branch-comparison-files-changed'
+import { BranchComparisonMergeStatus } from './branch-comparison-merge-status'
 import { ComputedAction } from '../../models/computed-action'
 
-interface IOpenPullRequestDialogProps {
+interface IBranchComparisonDialogProps {
   readonly repository: Repository
   readonly dispatcher: Dispatcher
 
   /**
-   * The IRepositoryState.pullRequestState
+   * The IRepositoryState.branchComparisonState
    */
-  readonly pullRequestState: IPullRequestState
+  readonly branchComparisonState: IBranchComparisonState
 
   /**
    * The currently checked out branch
@@ -36,21 +37,11 @@ interface IOpenPullRequestDialogProps {
    */
   readonly defaultBranch: Branch | null
 
-  /**
-   * Branches in the repo with the repo's default remote
-   *
-   * We only want branches that are also on dotcom such that, when we ask a user
-   * to create a pull request, the base branch also exists on dotcom.
-   */
-  readonly prBaseBranches: ReadonlyArray<Branch>
+  /** Branches available as the base of the comparison. */
+  readonly baseBranches: ReadonlyArray<Branch>
 
-  /**
-   * Recent branches with the repo's default remote
-   *
-   * We only want branches that are also on dotcom such that, when we ask a user
-   * to create a pull request, the base branch also exists on dotcom.
-   */
-  readonly prRecentBaseBranches: ReadonlyArray<Branch>
+  /** Recently used branches available as the base of the comparison. */
+  readonly recentBaseBranches: ReadonlyArray<Branch>
 
   /** Whether we should display side by side diffs. */
   readonly showSideBySideDiff: boolean
@@ -74,64 +65,46 @@ interface IOpenPullRequestDialogProps {
   /** Width to use for the files list pane in the files changed view */
   readonly fileListWidth: IConstrainedValue
 
-  /** If the latest commit of the pull request is not local, this will contain
-   * it's SHA  */
-  readonly nonLocalCommitSHA: string | null
-
-  /** Whether the current branch already has a pull request*/
-  readonly currentBranchHasPullRequest: boolean
-
   /** Called to dismiss the dialog */
   readonly onDismissed: () => void
 }
 
-/** The component for start a pull request. */
-export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialogProps> {
-  private onCreatePullRequest = () => {
-    const { currentBranchHasPullRequest, dispatcher, repository, onDismissed } =
-      this.props
-
-    if (currentBranchHasPullRequest) {
-      dispatcher.showPullRequest(repository)
-    } else {
-      const { baseBranch } = this.props.pullRequestState
-      dispatcher.createPullRequest(repository, baseBranch ?? undefined)
-      dispatcher.incrementMetric('createPullRequestCount')
-      dispatcher.incrementMetric('createPullRequestFromPreviewCount')
-    }
-
-    onDismissed()
-  }
-
+/** The dialog for comparing the current branch with another branch. */
+export class BranchComparisonDialog extends React.Component<IBranchComparisonDialogProps> {
   private onBranchChange = (branch: Branch) => {
     const { repository } = this.props
-    this.props.dispatcher.updatePullRequestBaseBranch(repository, branch)
+    this.props.dispatcher.updateBranchComparisonBaseBranch(repository, branch)
   }
 
   private renderHeader() {
     const {
       currentBranch,
-      pullRequestState,
+      branchComparisonState,
       defaultBranch,
-      prBaseBranches,
-      prRecentBaseBranches,
+      baseBranches,
+      recentBaseBranches,
     } = this.props
-    const { baseBranch, commitSelection, commitSHAs } = pullRequestState
+    const { baseBranch, commitSelection, commitSHAs } = branchComparisonState
     if (commitSelection === null) {
-      // type checking - will render no default branch message
-      return
+      return (
+        <DialogHeader
+          title={BranchComparisonDialogTitle}
+          titleId={BranchComparisonDialogId}
+          onCloseButtonClick={this.props.onDismissed}
+        />
+      )
     }
 
     const { changesetData } = commitSelection
 
     return (
-      <OpenPullRequestDialogHeader
+      <BranchComparisonDialogHeader
         repository={this.props.repository}
         baseBranch={baseBranch}
         currentBranch={currentBranch}
         defaultBranch={defaultBranch}
-        prBaseBranches={prBaseBranches}
-        prRecentBaseBranches={prRecentBaseBranches}
+        baseBranches={baseBranches}
+        recentBaseBranches={recentBaseBranches}
         commitCount={commitSHAs?.length ?? 0}
         changesetData={changesetData}
         onBranchChange={this.onBranchChange}
@@ -142,7 +115,7 @@ export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialo
 
   private renderContent() {
     return (
-      <div className="open-pull-request-content">
+      <div className="branch-comparison-content">
         {this.renderNoChanges()}
         {this.renderNoDefaultBranch()}
         {this.renderFilesChanged()}
@@ -156,12 +129,11 @@ export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialo
       externalEditorLabel,
       hideWhitespaceInDiff,
       imageDiffType,
-      pullRequestState,
+      branchComparisonState,
       repository,
       fileListWidth,
-      nonLocalCommitSHA,
     } = this.props
-    const { commitSelection } = pullRequestState
+    const { commitSelection } = branchComparisonState
     if (commitSelection === null) {
       // type checking - will render no default branch message
       return
@@ -175,7 +147,7 @@ export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialo
     }
 
     return (
-      <PullRequestFilesChanged
+      <BranchComparisonFilesChanged
         diff={diff}
         dispatcher={dispatcher}
         externalEditorLabel={externalEditorLabel}
@@ -183,7 +155,6 @@ export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialo
         files={files}
         hideWhitespaceInDiff={hideWhitespaceInDiff}
         imageDiffType={imageDiffType}
-        nonLocalCommitSHA={nonLocalCommitSHA}
         selectedFile={file}
         showSideBySideDiff={this.props.showSideBySideDiff}
         repository={repository}
@@ -193,8 +164,8 @@ export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialo
   }
 
   private renderNoChanges() {
-    const { pullRequestState, currentBranch } = this.props
-    const { commitSelection, baseBranch, mergeStatus } = pullRequestState
+    const { branchComparisonState, currentBranch } = this.props
+    const { commitSelection, baseBranch, mergeStatus } = branchComparisonState
     if (commitSelection === null || baseBranch === null) {
       // type checking - will render no default branch message
       return
@@ -217,9 +188,9 @@ export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialo
       </>
     )
     return (
-      <div className="open-pull-request-message">
+      <div className="branch-comparison-message">
         <div>
-          <Octicon symbol={octicons.gitPullRequest} />
+          <Octicon symbol={octicons.gitCompare} />
           <h3>There are no changes.</h3>
           {message}
         </div>
@@ -228,57 +199,30 @@ export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialo
   }
 
   private renderNoDefaultBranch() {
-    const { baseBranch } = this.props.pullRequestState
+    const { baseBranch } = this.props.branchComparisonState
 
     if (baseBranch !== null) {
       return
     }
 
     return (
-      <div className="open-pull-request-message">
+      <div className="branch-comparison-message">
         <div>
-          <Octicon symbol={octicons.gitPullRequest} />
-          <h3>Could not find a default branch to compare against.</h3>
-          Select a base branch above.
+          <Octicon symbol={octicons.gitCompare} />
+          <h3>There are no other branches to compare.</h3>
+          Create or fetch another branch, then try again.
         </div>
       </div>
     )
   }
 
   private renderFooter() {
-    const { currentBranchHasPullRequest, pullRequestState, repository } =
-      this.props
-    const { mergeStatus, commitSHAs } = pullRequestState
-    const gitHubRepository = repository.gitHubRepository
-    const isEnterprise =
-      gitHubRepository && gitHubRepository.endpoint !== getDotComAPIEndpoint()
-
-    const viewCreate = currentBranchHasPullRequest ? 'View' : ' Create'
-    const buttonTitle = `${viewCreate} pull request on GitHub${
-      isEnterprise ? ' Enterprise' : ''
-    }.`
-
-    const okButton = (
-      <>
-        {currentBranchHasPullRequest && (
-          <Octicon symbol={octicons.linkExternal} />
-        )}
-        {__DARWIN__
-          ? `${viewCreate} Pull Request`
-          : `${viewCreate} pull request`}
-      </>
-    )
+    const { mergeStatus } = this.props.branchComparisonState
 
     return (
       <DialogFooter>
-        <PullRequestMergeStatus mergeStatus={mergeStatus} />
-
-        <OkCancelButtonGroup
-          okButtonText={okButton}
-          okButtonTitle={buttonTitle}
-          cancelButtonText="Cancel"
-          okButtonDisabled={commitSHAs === null || commitSHAs.length === 0}
-        />
+        <BranchComparisonMergeStatus mergeStatus={mergeStatus} />
+        <OkCancelButtonGroup okButtonText="Close" cancelButtonVisible={false} />
       </DialogFooter>
     )
   }
@@ -286,9 +230,9 @@ export class OpenPullRequestDialog extends React.Component<IOpenPullRequestDialo
   public render() {
     return (
       <Dialog
-        titleId={OpenPullRequestDialogId}
-        className="open-pull-request"
-        onSubmit={this.onCreatePullRequest}
+        titleId={BranchComparisonDialogId}
+        className="branch-comparison"
+        onSubmit={this.props.onDismissed}
         onDismissed={this.props.onDismissed}
       >
         {this.renderHeader()}
