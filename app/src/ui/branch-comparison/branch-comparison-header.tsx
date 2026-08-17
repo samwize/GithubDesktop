@@ -6,15 +6,18 @@ import { Ref } from '../lib/ref'
 import { Repository } from '../../models/repository'
 import { IChangesetData } from '../../lib/git'
 
-export const OpenPullRequestDialogId = 'Dialog_Open_Pull_Request'
+export const BranchComparisonDialogId = 'Dialog_Branch_Comparison'
+export const BranchComparisonDialogTitle = __DARWIN__
+  ? 'Preview Branch Changes'
+  : 'Preview branch changes'
 
-interface IOpenPullRequestDialogHeaderProps {
+interface IBranchComparisonDialogHeaderProps {
   readonly repository: Repository
 
-  /** The base branch of the pull request */
+  /** The base branch of the comparison. */
   readonly baseBranch: Branch | null
 
-  /** The branch of the pull request */
+  /** The current branch being compared. */
   readonly currentBranch: Branch
 
   /**
@@ -22,23 +25,13 @@ interface IOpenPullRequestDialogHeaderProps {
    */
   readonly defaultBranch: Branch | null
 
-  /**
-   * Branches in the repo with the repo's default remote
-   *
-   * We only want branches that are also on dotcom such that, when we ask a user
-   * to create a pull request, the base branch also exists on dotcom.
-   */
-  readonly prBaseBranches: ReadonlyArray<Branch>
+  /** Branches available as the base of the comparison. */
+  readonly baseBranches: ReadonlyArray<Branch>
 
-  /**
-   * Recent branches with the repo's default remote
-   *
-   * We only want branches that are also on dotcom such that, when we ask a user
-   * to create a pull request, the base branch also exists on dotcom.
-   */
-  readonly prRecentBaseBranches: ReadonlyArray<Branch>
+  /** Recently used branches available as the base of the comparison. */
+  readonly recentBaseBranches: ReadonlyArray<Branch>
 
-  /** The count of commits of the pull request */
+  /** The number of commits in the comparison. */
   readonly commitCount: number
 
   /** The changeset data associated with the selected commit */
@@ -54,24 +47,20 @@ interface IOpenPullRequestDialogHeaderProps {
   readonly onDismissed?: () => void
 }
 
-/**
- * A header component for the open pull request dialog. Made to house the
- * base branch dropdown and merge details common to all pull request views.
- */
-export class OpenPullRequestDialogHeader extends React.Component<IOpenPullRequestDialogHeaderProps> {
-  public constructor(props: IOpenPullRequestDialogHeaderProps) {
+/** The header for the branch comparison dialog. */
+export class BranchComparisonDialogHeader extends React.Component<IBranchComparisonDialogHeaderProps> {
+  public constructor(props: IBranchComparisonDialogHeaderProps) {
     super(props)
   }
 
   public render() {
-    const title = __DARWIN__ ? 'Open a Pull Request' : 'Open a pull request'
     const {
       baseBranch,
       currentBranch,
       changesetData,
       defaultBranch,
-      prBaseBranches,
-      prRecentBaseBranches,
+      baseBranches,
+      recentBaseBranches,
       commitCount,
       onBranchChange,
       onDismissed,
@@ -81,29 +70,24 @@ export class OpenPullRequestDialogHeader extends React.Component<IOpenPullReques
 
     return (
       <DialogHeader
-        title={title}
-        titleId={OpenPullRequestDialogId}
+        title={BranchComparisonDialogTitle}
+        titleId={BranchComparisonDialogId}
         onCloseButtonClick={onDismissed}
       >
         <div className="break"></div>
         <div className="base-branch-details">
-          Merge {commits} into{' '}
+          Compare {commits} from <Ref>{currentBranch.name}</Ref> against{' '}
           <BranchSelect
             repository={this.props.repository}
             branch={baseBranch}
             defaultBranch={defaultBranch}
             currentBranch={currentBranch}
-            allBranches={prBaseBranches}
-            recentBranches={prRecentBaseBranches}
+            allBranches={baseBranches}
+            recentBranches={recentBaseBranches}
             onChange={onBranchChange}
-            noBranchesMessage={
-              <>
-                <p>Sorry, I can't find that remote branch.</p>
-                <p>You can only open pull requests against remote branches.</p>
-              </>
-            }
-          />{' '}
-          from <Ref>{currentBranch.name}</Ref>.
+            noBranchesMessage={<p>There are no other branches to compare.</p>}
+          />
+          .
         </div>
         <div className="lines-added-deleted">
           <span className="sr-only">Lines changed:</span>

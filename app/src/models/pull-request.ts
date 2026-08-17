@@ -44,7 +44,7 @@ export class PullRequest {
 
 /** The types of pull request suggested next actions */
 export enum PullRequestSuggestedNextAction {
-  PreviewPullRequest = 'PreviewPullRequest',
+  PreviewBranchChanges = 'PreviewBranchChanges',
   CreatePullRequest = 'CreatePullRequest',
 }
 
@@ -52,13 +52,13 @@ export enum PullRequestSuggestedNextAction {
 export function isIdPullRequestSuggestedNextAction(
   id: string
 ): id is
-  | PullRequestSuggestedNextAction.PreviewPullRequest
+  | PullRequestSuggestedNextAction.PreviewBranchChanges
   | PullRequestSuggestedNextAction.CreatePullRequest {
   return (
-    id === PullRequestSuggestedNextAction.PreviewPullRequest ||
+    id === PullRequestSuggestedNextAction.PreviewBranchChanges ||
     id === PullRequestSuggestedNextAction.CreatePullRequest
   )
 }
 
 export const defaultPullRequestSuggestedNextAction =
-  PullRequestSuggestedNextAction.PreviewPullRequest
+  PullRequestSuggestedNextAction.PreviewBranchChanges

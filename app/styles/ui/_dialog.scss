@@ -18,7 +18,7 @@
 @import 'dialogs/choose-branch';
 @import 'dialogs/ci-check-run-rerun';
 @import 'dialogs/unreachable-commits';
-@import 'dialogs/open-pull-request';
+@import 'dialogs/branch-comparison';
 @import 'dialogs/installing-update';
 @import 'dialogs/test-notifications';
 @import 'dialogs/pull-request-comment-like';
@@ -485,15 +485,15 @@ dialog {
       }
     }
 
-    &.open-pull-request {
+    &.branch-comparison {
       max-height: calc(100vh - var(--spacing-double));
 
-      .open-pull-request-content {
+      .branch-comparison-content {
         overflow-y: auto;
         min-height: calc(100vh - 250px);
         padding: 0;
 
-        .pull-request-files-changed {
+        .branch-comparison-files-changed {
           border: none;
           border-radius: unset;
         }

@@ -44,7 +44,7 @@ export type MenuEvent =
   | 'hide-stashed-changes'
   | 'find-text'
   | 'create-issue-in-repository-on-github'
-  | 'preview-pull-request'
+  | 'preview-branch-changes'
   | 'test-app-error'
   | 'decrease-active-resizable-width'
   | 'increase-active-resizable-width'

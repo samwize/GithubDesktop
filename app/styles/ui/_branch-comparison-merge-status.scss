@@ -1,4 +1,4 @@
-.pull-request-merge-status {
+.branch-comparison-merge-status {
   flex-grow: 1;
   color: var(--text-secondary-color);
 
@@ -10,20 +10,20 @@
     font-weight: var(--font-weight-semibold);
   }
 
-  .pr-merge-status-loading {
+  .branch-comparison-merge-status-loading {
     strong {
       color: var(--file-warning-color);
     }
   }
 
-  .pr-merge-status-invalid,
-  .pr-merge-status-conflicts {
+  .branch-comparison-merge-status-invalid,
+  .branch-comparison-merge-status-conflicts {
     strong {
       color: var(--status-error-color);
     }
   }
 
-  .pr-merge-status-clean {
+  .branch-comparison-merge-status-clean {
     strong {
       color: var(--status-success-color);
     }
