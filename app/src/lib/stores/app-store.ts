@@ -10103,6 +10103,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
         : emptyChangeSet
 
     if (changesetData === undefined) {
+      if (generation === this.branchComparisonGeneration) {
+        this.branchComparisonGeneration++
+        this.repositoryStateCache.clearBranchComparisonState(repository)
+        this.popupManager.removePopupByType(PopupType.BranchComparison)
+        this.emitUpdate()
+      }
       return
     }
 
