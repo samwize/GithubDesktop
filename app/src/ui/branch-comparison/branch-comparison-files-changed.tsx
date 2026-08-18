@@ -23,6 +23,8 @@ import { clipboard } from 'electron'
 import { IConstrainedValue } from '../../lib/app-state'
 import { clamp } from '../../lib/clamp'
 import { DiffOptions } from '../diff/diff-options'
+import { mapStatus } from '../../lib/status'
+import { Octicon, iconForStatus } from '../octicons'
 
 interface IBranchComparisonFilesChangedProps {
   readonly repository: Repository
@@ -34,8 +36,8 @@ interface IBranchComparisonFilesChangedProps {
   /** The files changed between the selected branches. */
   readonly files: ReadonlyArray<CommittedFileChange>
 
-  /** The diff that should be rendered */
-  readonly diff: IDiff | null
+  /** Diffs loaded for the changed files, keyed by file ID. */
+  readonly diffs: ReadonlyMap<string, IDiff | null>
 
   /** The type of image diff to display. */
   readonly imageDiffType: ImageDiffType
@@ -62,6 +64,75 @@ interface IBranchComparisonFilesChangedProps {
 
 interface IBranchComparisonFilesChangedState {
   readonly showSideBySideDiff: boolean
+  readonly activeFileId: string | null
+}
+
+interface IBranchComparisonDiffSectionProps {
+  readonly repository: Repository
+  readonly file: CommittedFileChange
+  readonly diff: IDiff | null
+  readonly imageDiffType: ImageDiffType
+  readonly hideWhitespaceInDiff: boolean
+  readonly showSideBySideDiff: boolean
+  readonly onSectionRef: (fileId: string, element: HTMLElement | null) => void
+  readonly onOpenBinaryFile: (fullPath: string) => void
+  readonly onChangeImageDiffType: (imageDiffType: ImageDiffType) => void
+  readonly onHideWhitespaceInDiffChanged: (
+    hideWhitespaceInDiff: boolean
+  ) => void
+}
+
+class BranchComparisonDiffSection extends React.PureComponent<IBranchComparisonDiffSectionProps> {
+  private onSectionRef = (element: HTMLElement | null) => {
+    this.props.onSectionRef(this.props.file.id, element)
+  }
+
+  public render() {
+    const {
+      repository,
+      file,
+      diff,
+      imageDiffType,
+      hideWhitespaceInDiff,
+      showSideBySideDiff,
+      onOpenBinaryFile,
+      onChangeImageDiffType,
+      onHideWhitespaceInDiffChanged,
+    } = this.props
+    const status = mapStatus(file.status)
+
+    return (
+      <section
+        className="branch-comparison-diff-section"
+        ref={this.onSectionRef}
+        data-file-id={file.id}
+      >
+        <div className="branch-comparison-diff-file-header">
+          <span className="file-path">{file.path}</span>
+          <Octicon
+            symbol={iconForStatus(file.status)}
+            className={`status status-${status.toLowerCase()}`}
+          />
+        </div>
+        <div className="branch-comparison-diff-section-body">
+          <SeamlessDiffSwitcher
+            repository={repository}
+            imageDiffType={imageDiffType}
+            file={file}
+            diff={diff}
+            readOnly={true}
+            hideWhitespaceInDiff={hideWhitespaceInDiff}
+            showSideBySideDiff={showSideBySideDiff}
+            showDiffCheckMarks={false}
+            renderAllRows={true}
+            onOpenBinaryFile={onOpenBinaryFile}
+            onChangeImageDiffType={onChangeImageDiffType}
+            onHideWhitespaceInDiffChanged={onHideWhitespaceInDiffChanged}
+          />
+        </div>
+      </section>
+    )
+  }
 }
 
 /**
@@ -71,10 +142,53 @@ export class BranchComparisonFilesChanged extends React.Component<
   IBranchComparisonFilesChangedProps,
   IBranchComparisonFilesChangedState
 > {
+  private readonly diffListRef = React.createRef<HTMLDivElement>()
+  private readonly diffSectionRefs = new Map<string, HTMLElement>()
+  private scrollFrame: number | null = null
+
   public constructor(props: IBranchComparisonFilesChangedProps) {
     super(props)
 
-    this.state = { showSideBySideDiff: props.showSideBySideDiff }
+    this.state = {
+      showSideBySideDiff: props.showSideBySideDiff,
+      activeFileId: props.selectedFile?.id ?? props.files[0]?.id ?? null,
+    }
+  }
+
+  public componentDidMount() {
+    this.diffListRef.current?.addEventListener(
+      'scroll',
+      this.onDiffListScroll,
+      {
+        passive: true,
+      }
+    )
+  }
+
+  public componentDidUpdate(prevProps: IBranchComparisonFilesChangedProps) {
+    if (prevProps.files !== this.props.files) {
+      const activeFileStillExists = this.props.files.some(
+        file => file.id === this.state.activeFileId
+      )
+
+      if (!activeFileStillExists) {
+        this.setState({
+          activeFileId:
+            this.props.selectedFile?.id ?? this.props.files[0]?.id ?? null,
+        })
+      }
+    }
+  }
+
+  public componentWillUnmount() {
+    this.diffListRef.current?.removeEventListener(
+      'scroll',
+      this.onDiffListScroll
+    )
+
+    if (this.scrollFrame !== null) {
+      window.cancelAnimationFrame(this.scrollFrame)
+    }
   }
 
   private onOpenFile = (path: string) => {
@@ -186,10 +300,66 @@ export class BranchComparisonFilesChanged extends React.Component<
   }
 
   private onFileSelected = (file: CommittedFileChange) => {
+    this.setState({ activeFileId: file.id })
     this.props.dispatcher.changeBranchComparisonFileSelection(
       this.props.repository,
       file
     )
+
+    const diffList = this.diffListRef.current
+    const diffSection = this.diffSectionRefs.get(file.id)
+    if (diffList !== null && diffSection !== undefined) {
+      const top =
+        diffList.scrollTop +
+        diffSection.getBoundingClientRect().top -
+        diffList.getBoundingClientRect().top
+      diffList.scrollTo({ top, behavior: 'auto' })
+    }
+  }
+
+  private onDiffListScroll = () => {
+    if (this.scrollFrame !== null) {
+      return
+    }
+
+    this.scrollFrame = window.requestAnimationFrame(() => {
+      this.scrollFrame = null
+      this.updateActiveFileFromScroll()
+    })
+  }
+
+  private updateActiveFileFromScroll() {
+    const diffList = this.diffListRef.current
+    if (diffList === null) {
+      return
+    }
+
+    const listTop = diffList.getBoundingClientRect().top + 1
+    let activeFileId = this.props.files[0]?.id ?? null
+
+    for (const file of this.props.files) {
+      const section = this.diffSectionRefs.get(file.id)
+      if (
+        section === undefined ||
+        section.getBoundingClientRect().top > listTop
+      ) {
+        break
+      }
+
+      activeFileId = file.id
+    }
+
+    if (activeFileId !== this.state.activeFileId) {
+      this.setState({ activeFileId })
+    }
+  }
+
+  private onDiffSectionRef = (fileId: string, element: HTMLElement | null) => {
+    if (element === null) {
+      this.diffSectionRefs.delete(fileId)
+    } else {
+      this.diffSectionRefs.set(fileId, element)
+    }
   }
 
   private onRowDoubleClick = (row: number) => {
@@ -220,7 +390,9 @@ export class BranchComparisonFilesChanged extends React.Component<
   }
 
   private renderFileList() {
-    const { files, selectedFile, fileListWidth } = this.props
+    const { files, fileListWidth } = this.props
+    const selectedFile =
+      files.find(file => file.id === this.state.activeFileId) ?? null
 
     return (
       <Resizable
@@ -243,31 +415,36 @@ export class BranchComparisonFilesChanged extends React.Component<
     )
   }
 
-  private renderDiff() {
-    const { selectedFile } = this.props
-
-    if (selectedFile === null) {
-      return
-    }
-
-    const { diff, repository, imageDiffType, hideWhitespaceInDiff } = this.props
-
+  private renderDiffs() {
+    const { diffs, files, repository, imageDiffType, hideWhitespaceInDiff } =
+      this.props
     const { showSideBySideDiff } = this.state
 
     return (
-      <SeamlessDiffSwitcher
-        repository={repository}
-        imageDiffType={imageDiffType}
-        file={selectedFile}
-        diff={diff}
-        readOnly={true}
-        hideWhitespaceInDiff={hideWhitespaceInDiff}
-        showSideBySideDiff={showSideBySideDiff}
-        showDiffCheckMarks={false}
-        onOpenBinaryFile={this.onOpenBinaryFile}
-        onChangeImageDiffType={this.onChangeImageDiffType}
-        onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
-      />
+      <div
+        className={
+          files.length > 1
+            ? 'branch-comparison-diffs has-multiple-files'
+            : 'branch-comparison-diffs'
+        }
+        ref={this.diffListRef}
+      >
+        {files.map(file => (
+          <BranchComparisonDiffSection
+            key={file.id}
+            repository={repository}
+            file={file}
+            diff={diffs.get(file.id) ?? null}
+            imageDiffType={imageDiffType}
+            hideWhitespaceInDiff={hideWhitespaceInDiff}
+            showSideBySideDiff={showSideBySideDiff}
+            onSectionRef={this.onDiffSectionRef}
+            onOpenBinaryFile={this.onOpenBinaryFile}
+            onChangeImageDiffType={this.onChangeImageDiffType}
+            onHideWhitespaceInDiffChanged={this.onHideWhitespaceInDiffChanged}
+          />
+        ))}
+      </div>
     )
   }
 
@@ -277,7 +454,7 @@ export class BranchComparisonFilesChanged extends React.Component<
         {this.renderHeader()}
         <div className="files-diff-viewer">
           {this.renderFileList()}
-          {this.renderDiff()}
+          {this.renderDiffs()}
         </div>
       </div>
     )

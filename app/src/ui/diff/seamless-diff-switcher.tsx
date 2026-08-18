@@ -73,6 +73,9 @@ interface ISeamlessDiffSwitcherProps {
   // eslint-disable-next-line react/no-unused-prop-types
   readonly showDiffCheckMarks: boolean
 
+  /** Render every text row into a parent scrolling document. */
+  readonly renderAllRows?: boolean
+
   /** Whether we should show a confirmation dialog when the user discards changes */
   readonly askForConfirmationOnDiscardChanges?: boolean
 
@@ -346,6 +349,7 @@ export class SeamlessDiffSwitcher extends React.Component<
       loading: isLoadingDiff,
       slow: isLoadingDiff && isLoadingSlow,
       'has-diff': diff !== null,
+      'render-all-rows': this.props.renderAllRows,
     })
 
     const loadingIndicator = isLoadingDiff ? (
@@ -370,6 +374,7 @@ export class SeamlessDiffSwitcher extends React.Component<
               this.props.askForConfirmationOnDiscardChanges
             }
             showDiffCheckMarks={showDiffCheckMarks}
+            renderAllRows={this.props.renderAllRows}
             onIncludeChanged={isLoadingDiff ? noop : onIncludeChanged}
             onDiscardChanges={isLoadingDiff ? noop : onDiscardChanges}
             onOpenBinaryFile={isLoadingDiff ? noop : onOpenBinaryFile}
