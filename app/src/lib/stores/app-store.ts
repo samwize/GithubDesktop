@@ -10319,6 +10319,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
     await Promise.all(
       Array.from({ length: workers }, async () => {
         while (nextFile < files.length) {
+          if (
+            !this.isCurrentBranchComparisonDiffLoad(generation, diffGeneration)
+          ) {
+            return
+          }
+
           const file = files[nextFile++]
           const { branchesState, branchComparisonState } =
             this.repositoryStateCache.get(repository)
@@ -10360,6 +10366,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
     generation: number,
     diffGeneration: number
   ): Promise<void> {
+    if (!this.isCurrentBranchComparisonDiffLoad(generation, diffGeneration)) {
+      return
+    }
+
     const { branchComparisonState } = this.repositoryStateCache.get(repository)
     if (
       branchComparisonState === null ||
@@ -10395,8 +10405,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.repositoryStateCache.get(repository).branchesState.tip
 
     if (
-      generation !== this.branchComparisonGeneration ||
-      diffGeneration !== this.branchComparisonDiffGeneration ||
+      !this.isCurrentBranchComparisonDiffLoad(generation, diffGeneration) ||
       baseBranchAfterDiffLoad?.ref !== baseBranch.ref ||
       tipAfterDiffLoad.kind !== TipState.Valid ||
       tipAfterDiffLoad.branch.ref !== currentBranch.ref
@@ -10422,6 +10431,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     this.emitUpdate()
+  }
+
+  private isCurrentBranchComparisonDiffLoad(
+    generation: number,
+    diffGeneration: number
+  ): boolean {
+    return (
+      generation === this.branchComparisonGeneration &&
+      diffGeneration === this.branchComparisonDiffGeneration
+    )
   }
 
   public _setBranchComparisonFileListWidth(width: number): Promise<void> {

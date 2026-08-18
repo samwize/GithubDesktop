@@ -74,6 +74,7 @@ interface IBranchComparisonDiffSectionProps {
   readonly imageDiffType: ImageDiffType
   readonly hideWhitespaceInDiff: boolean
   readonly showSideBySideDiff: boolean
+  readonly isActive: boolean
   readonly onSectionRef: (fileId: string, element: HTMLElement | null) => void
   readonly onOpenBinaryFile: (fullPath: string) => void
   readonly onChangeImageDiffType: (imageDiffType: ImageDiffType) => void
@@ -95,6 +96,7 @@ class BranchComparisonDiffSection extends React.PureComponent<IBranchComparisonD
       imageDiffType,
       hideWhitespaceInDiff,
       showSideBySideDiff,
+      isActive,
       onOpenBinaryFile,
       onChangeImageDiffType,
       onHideWhitespaceInDiffChanged,
@@ -125,6 +127,7 @@ class BranchComparisonDiffSection extends React.PureComponent<IBranchComparisonD
             showSideBySideDiff={showSideBySideDiff}
             showDiffCheckMarks={false}
             renderAllRows={true}
+            isActiveForGlobalFind={isActive}
             onOpenBinaryFile={onOpenBinaryFile}
             onChangeImageDiffType={onChangeImageDiffType}
             onHideWhitespaceInDiffChanged={onHideWhitespaceInDiffChanged}
@@ -438,6 +441,7 @@ export class BranchComparisonFilesChanged extends React.Component<
             imageDiffType={imageDiffType}
             hideWhitespaceInDiff={hideWhitespaceInDiff}
             showSideBySideDiff={showSideBySideDiff}
+            isActive={file.id === this.state.activeFileId}
             onSectionRef={this.onDiffSectionRef}
             onOpenBinaryFile={this.onOpenBinaryFile}
             onChangeImageDiffType={this.onChangeImageDiffType}

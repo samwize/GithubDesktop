@@ -22,6 +22,12 @@
     [role='row'] {
       min-height: 20px;
     }
+
+    > .diff-search {
+      align-self: flex-end;
+      position: sticky;
+      top: 36px;
+    }
   }
 
   &,

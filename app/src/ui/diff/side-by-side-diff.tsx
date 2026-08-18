@@ -151,6 +151,9 @@ interface ISideBySideDiffProps {
   /** Render every row into a parent scrolling document. */
   readonly renderAllRows?: boolean
 
+  /** Whether this diff should handle the global Find command. */
+  readonly isActiveForGlobalFind?: boolean
+
   /** Called when the user changes the hide whitespace in diffs setting. */
   readonly onHideWhitespaceInDiffChanged: (checked: boolean) => void
 }
@@ -279,15 +282,9 @@ export class SideBySideDiff extends React.Component<
   public componentDidMount() {
     this.initDiffSyntaxMode()
 
-    if (this.props.renderAllRows) {
-      return
+    if (this.props.isActiveForGlobalFind !== false) {
+      this.addGlobalFindListeners()
     }
-
-    window.addEventListener('keydown', this.onWindowKeyDown)
-
-    // Listen for the custom event find-text (see app.tsx)
-    // and trigger the search plugin if we see it.
-    document.addEventListener('find-text', this.showSearch)
 
     document.addEventListener('cut', this.onCutOrCopy)
     document.addEventListener('copy', this.onCutOrCopy)
@@ -297,16 +294,33 @@ export class SideBySideDiff extends React.Component<
     this.addContextMenuListenerToDiff()
   }
 
+  private addGlobalFindListeners() {
+    window.addEventListener('keydown', this.onWindowKeyDown)
+    document.addEventListener('find-text', this.showSearch)
+  }
+
+  private removeGlobalFindListeners() {
+    window.removeEventListener('keydown', this.onWindowKeyDown)
+    document.removeEventListener('find-text', this.showSearch)
+  }
+
   private addContextMenuListenerToDiff = () => {
-    const diffNode = findDOMNode(this.virtualListRef.current)
-    const diff = diffNode instanceof HTMLElement ? diffNode : null
+    const diff = this.getDiffElement()
     diff?.addEventListener('contextmenu', this.onContextMenuText)
   }
 
   private removeContextMenuListenerFromDiff = () => {
-    const diffNode = findDOMNode(this.virtualListRef.current)
-    const diff = diffNode instanceof HTMLElement ? diffNode : null
+    const diff = this.getDiffElement()
     diff?.removeEventListener('contextmenu', this.onContextMenuText)
+  }
+
+  private getDiffElement() {
+    if (this.props.renderAllRows) {
+      return this.diffContainer
+    }
+
+    const diffNode = findDOMNode(this.virtualListRef.current)
+    return diffNode instanceof HTMLElement ? diffNode : null
   }
 
   private onCutOrCopy = (ev: ClipboardEvent) => {
@@ -420,13 +434,10 @@ export class SideBySideDiff extends React.Component<
   }
 
   public componentWillUnmount() {
-    if (this.props.renderAllRows) {
-      return
-    }
-
-    window.removeEventListener('keydown', this.onWindowKeyDown)
+    this.removeGlobalFindListeners()
     document.removeEventListener('mouseup', this.onEndSelection)
-    document.removeEventListener('find-text', this.showSearch)
+    document.removeEventListener('cut', this.onCutOrCopy)
+    document.removeEventListener('copy', this.onCutOrCopy)
     document.removeEventListener(
       'selectionchange',
       this.onDocumentSelectionChange
@@ -439,6 +450,21 @@ export class SideBySideDiff extends React.Component<
     prevProps: ISideBySideDiffProps,
     prevState: ISideBySideDiffState
   ) {
+    const wasActiveForGlobalFind = prevProps.isActiveForGlobalFind !== false
+    const isActiveForGlobalFind = this.props.isActiveForGlobalFind !== false
+
+    if (wasActiveForGlobalFind !== isActiveForGlobalFind) {
+      if (isActiveForGlobalFind) {
+        this.addGlobalFindListeners()
+      } else {
+        this.removeGlobalFindListeners()
+
+        if (this.state.isSearching) {
+          this.resetSearch(false)
+        }
+      }
+    }
+
     if (
       !highlightParametersEqual(this.props, prevProps, this.state, prevState)
     ) {
@@ -932,7 +958,10 @@ export class SideBySideDiff extends React.Component<
 
     const rowWithTokens = this.createFullRow(row, index)
 
-    const rowSelectableGroupDetails = this.getRowSelectableGroupDetails(index)
+    const isDiffSelectable = canSelect(this.props.file)
+    const rowSelectableGroupDetails = isDiffSelectable
+      ? this.getRowSelectableGroupDetails(index)
+      : null
 
     return (
       <div key={key} style={style} role="row" aria-rowindex={index}>
@@ -940,7 +969,7 @@ export class SideBySideDiff extends React.Component<
           row={rowWithTokens}
           lineNumberWidth={lineNumberWidth}
           numRow={index}
-          isDiffSelectable={canSelect(this.props.file)}
+          isDiffSelectable={isDiffSelectable}
           rowSelectableGroup={rowSelectableGroupDetails}
           showSideBySideDiff={this.props.showSideBySideDiff}
           hideWhitespaceInDiff={this.props.hideWhitespaceInDiff}
@@ -1640,7 +1669,7 @@ export class SideBySideDiff extends React.Component<
   }
 
   private onWindowKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) {
+    if (event.defaultPrevented || this.props.isActiveForGlobalFind === false) {
       return
     }
 
@@ -1655,7 +1684,7 @@ export class SideBySideDiff extends React.Component<
   }
 
   private showSearch = () => {
-    if (!this.state.isSearching) {
+    if (this.props.isActiveForGlobalFind !== false && !this.state.isSearching) {
       this.resetSearch(true)
     }
   }
@@ -1736,7 +1765,15 @@ export class SideBySideDiff extends React.Component<
     const scrollToRow = searchResults?.get(index)?.row
 
     if (scrollToRow !== undefined) {
-      this.virtualListRef.current?.scrollToRow(scrollToRow)
+      if (this.props.renderAllRows) {
+        this.diffContainer
+          ?.querySelector<HTMLElement>(
+            `div[role=row][aria-rowindex="${scrollToRow}"]`
+          )
+          ?.scrollIntoView({ block: 'center' })
+      } else {
+        this.virtualListRef.current?.scrollToRow(scrollToRow)
+      }
     }
   }
 
