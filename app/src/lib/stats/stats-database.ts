@@ -599,7 +599,7 @@ export interface IDailyMeasures {
   /** The number of times the user opens a submodule repository from its diff */
   readonly openSubmoduleFromDiffCount: number
 
-  /** The number of times a user has opened the preview pull request dialog */
+  /** The number of times a user has opened the branch comparison dialog */
   readonly previewedPullRequestCount: number
   /** The number of times a user initiates (from an empty state) typing in the changes filter bar */
   typedInChangesFilterCount: 0

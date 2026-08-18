@@ -22,18 +22,16 @@ import { revealInFileManager } from '../../lib/app-shell'
 import { clipboard } from 'electron'
 import { IConstrainedValue } from '../../lib/app-state'
 import { clamp } from '../../lib/clamp'
-import { getDotComAPIEndpoint } from '../../lib/api'
-import { createCommitURL } from '../../lib/commit-url'
 import { DiffOptions } from '../diff/diff-options'
 
-interface IPullRequestFilesChangedProps {
+interface IBranchComparisonFilesChangedProps {
   readonly repository: Repository
   readonly dispatcher: Dispatcher
 
   /** The file whose diff should be displayed. */
   readonly selectedFile: CommittedFileChange | null
 
-  /** The files changed in the pull request. */
+  /** The files changed between the selected branches. */
   readonly files: ReadonlyArray<CommittedFileChange>
 
   /** The diff that should be rendered */
@@ -54,10 +52,6 @@ interface IPullRequestFilesChangedProps {
   /** Width to use for the files list pane */
   readonly fileListWidth: IConstrainedValue
 
-  /** If the latest commit of the pull request is not local, this will contain
-   * it's SHA  */
-  readonly nonLocalCommitSHA: string | null
-
   /**
    * Callback to open a selected file using the configured external editor
    *
@@ -66,18 +60,18 @@ interface IPullRequestFilesChangedProps {
   readonly onOpenInExternalEditor: (fullPath: string) => void
 }
 
-interface IPullRequestFilesChangedState {
+interface IBranchComparisonFilesChangedState {
   readonly showSideBySideDiff: boolean
 }
 
 /**
- * A component for viewing the file changes for a pull request.
+ * A component for viewing the changes between two branches.
  */
-export class PullRequestFilesChanged extends React.Component<
-  IPullRequestFilesChangedProps,
-  IPullRequestFilesChangedState
+export class BranchComparisonFilesChanged extends React.Component<
+  IBranchComparisonFilesChangedProps,
+  IBranchComparisonFilesChangedState
 > {
-  public constructor(props: IPullRequestFilesChangedProps) {
+  public constructor(props: IBranchComparisonFilesChangedProps) {
     super(props)
 
     this.state = { showSideBySideDiff: props.showSideBySideDiff }
@@ -99,7 +93,7 @@ export class PullRequestFilesChanged extends React.Component<
   /** Called when the user changes the hide whitespace in diffs setting. */
   private onHideWhitespaceInDiffChanged = (hideWhitespaceInDiff: boolean) => {
     const { selectedFile } = this.props
-    return this.props.dispatcher.onHideWhitespaceInPullRequestDiffChanged(
+    return this.props.dispatcher.onHideWhitespaceInBranchComparisonDiffChanged(
       hideWhitespaceInDiff,
       this.props.repository,
       selectedFile
@@ -123,32 +117,11 @@ export class PullRequestFilesChanged extends React.Component<
   }
 
   private onFileListResize = (width: number) => {
-    this.props.dispatcher.setPullRequestFileListWidth(width)
+    this.props.dispatcher.setBranchComparisonFileListWidth(width)
   }
 
   private onFileListSizeReset = () => {
-    this.props.dispatcher.resetPullRequestFileListWidth()
-  }
-
-  private onViewOnGitHub = (file: CommittedFileChange) => {
-    const { nonLocalCommitSHA, repository, dispatcher } = this.props
-    const { gitHubRepository } = repository
-
-    if (gitHubRepository === null || nonLocalCommitSHA === null) {
-      return
-    }
-
-    const commitURL = createCommitURL(
-      gitHubRepository,
-      nonLocalCommitSHA,
-      file.path
-    )
-
-    if (commitURL === null) {
-      return
-    }
-
-    dispatcher.openInBrowser(commitURL)
+    this.props.dispatcher.resetBranchComparisonFileListWidth()
   }
 
   private onFileContextMenu = async (
@@ -207,25 +180,13 @@ export class PullRequestFilesChanged extends React.Component<
         label: CopyRelativeFilePathLabel,
         action: () => clipboard.writeText(Path.normalize(file.path)),
       },
-      { type: 'separator' },
     ]
-
-    const { nonLocalCommitSHA } = this.props
-    const { gitHubRepository } = repository
-    const isEnterprise =
-      gitHubRepository && gitHubRepository.endpoint !== getDotComAPIEndpoint()
-
-    items.push({
-      label: `View on GitHub${isEnterprise ? ' Enterprise' : ''}`,
-      action: () => this.onViewOnGitHub(file),
-      enabled: nonLocalCommitSHA !== null && gitHubRepository !== null,
-    })
 
     showContextualMenu(items)
   }
 
   private onFileSelected = (file: CommittedFileChange) => {
-    this.props.dispatcher.changePullRequestFileSelection(
+    this.props.dispatcher.changeBranchComparisonFileSelection(
       this.props.repository,
       file
     )
@@ -268,7 +229,7 @@ export class PullRequestFilesChanged extends React.Component<
         maximumWidth={fileListWidth.max}
         onResize={this.onFileListResize}
         onReset={this.onFileListSizeReset}
-        description="Pull request file list"
+        description="Branch comparison file list"
       >
         <FileList
           files={files}
@@ -312,7 +273,7 @@ export class PullRequestFilesChanged extends React.Component<
 
   public render() {
     return (
-      <div className="pull-request-files-changed">
+      <div className="branch-comparison-files-changed">
         {this.renderHeader()}
         <div className="files-diff-viewer">
           {this.renderFileList()}

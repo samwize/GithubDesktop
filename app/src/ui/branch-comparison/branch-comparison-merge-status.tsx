@@ -5,14 +5,13 @@ import { MergeTreeResult } from '../../models/merge'
 import { Octicon } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
 
-interface IPullRequestMergeStatusProps {
-  /** The result of merging the pull request branch into the base branch */
+interface IBranchComparisonMergeStatusProps {
+  /** The result of merging the current branch into the base branch. */
   readonly mergeStatus: MergeTreeResult | null
 }
 
-/** The component to display message about the result of merging the pull
- * request. */
-export class PullRequestMergeStatus extends React.Component<IPullRequestMergeStatusProps> {
+/** Displays whether the compared branches can be merged automatically. */
+export class BranchComparisonMergeStatus extends React.Component<IBranchComparisonMergeStatusProps> {
   private getMergeStatusDescription = () => {
     const { mergeStatus } = this.props
     if (mergeStatus === null) {
@@ -23,21 +22,20 @@ export class PullRequestMergeStatus extends React.Component<IPullRequestMergeSta
     switch (kind) {
       case ComputedAction.Loading:
         return (
-          <span className="pr-merge-status-loading">
-            <strong>Checking mergeability&hellip;</strong> Don’t worry, you can
-            still create the pull request.
+          <span className="branch-comparison-merge-status-loading">
+            <strong>Loading branch comparison&hellip;</strong>
           </span>
         )
       case ComputedAction.Invalid:
         return (
-          <span className="pr-merge-status-invalid">
-            <strong>Error checking merge status.</strong> Unable to merge
-            unrelated histories in this repository
+          <span className="branch-comparison-merge-status-invalid">
+            <strong>Unable to compare branches.</strong> These branches have
+            unrelated histories.
           </span>
         )
       case ComputedAction.Clean:
         return (
-          <span className="pr-merge-status-clean">
+          <span className="branch-comparison-merge-status-clean">
             <strong>
               <Octicon symbol={octicons.check} /> Able to merge.
             </strong>{' '}
@@ -46,11 +44,11 @@ export class PullRequestMergeStatus extends React.Component<IPullRequestMergeSta
         )
       case ComputedAction.Conflicts:
         return (
-          <span className="pr-merge-status-conflicts">
+          <span className="branch-comparison-merge-status-conflicts">
             <strong>
               <Octicon symbol={octicons.x} /> Can't automatically merge.
             </strong>{' '}
-            Don’t worry, you can still create the pull request.
+            These branches have merge conflicts.
           </span>
         )
       default:
@@ -60,7 +58,7 @@ export class PullRequestMergeStatus extends React.Component<IPullRequestMergeSta
 
   public render() {
     return (
-      <div className="pull-request-merge-status">
+      <div className="branch-comparison-merge-status">
         {this.getMergeStatusDescription()}
       </div>
     )

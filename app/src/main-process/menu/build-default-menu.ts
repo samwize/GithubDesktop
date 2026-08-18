@@ -498,10 +498,10 @@ export function buildDefaultMenuTemplate({
   ]
 
   branchSubmenu.push({
-    label: __DARWIN__ ? 'Preview Pull Request' : 'Preview pull request',
-    id: 'preview-pull-request',
+    label: __DARWIN__ ? 'Preview Branch Changes…' : 'Preview branch changes…',
+    id: 'preview-branch-changes',
     accelerator: 'CmdOrCtrl+Alt+P',
-    click: emit('preview-pull-request'),
+    click: emit('preview-branch-changes'),
   })
 
   branchSubmenu.push({

@@ -138,7 +138,7 @@ const allMenuIds: ReadonlyArray<MenuIDs> = [
   'clone-repository',
   'about',
   'create-pull-request',
-  'preview-pull-request',
+  'preview-branch-changes',
   'squash-and-merge-branch',
   'toggle-stashed-changes',
   'create-worktree',
@@ -310,8 +310,8 @@ function getRepositoryMenuBuilder(state: IAppState): MenuStateBuilder {
       isHostedOnGitHub && !branchIsUnborn && !onDetachedHead
     )
     menuStateBuilder.setEnabled(
-      'preview-pull-request',
-      !branchIsUnborn && !onDetachedHead && isHostedOnGitHub
+      'preview-branch-changes',
+      !branchIsUnborn && !onDetachedHead
     )
 
     menuStateBuilder.setEnabled(
@@ -355,7 +355,7 @@ function getRepositoryMenuBuilder(state: IAppState): MenuStateBuilder {
 
     menuStateBuilder.disable('view-repository-on-github')
     menuStateBuilder.disable('create-pull-request')
-    menuStateBuilder.disable('preview-pull-request')
+    menuStateBuilder.disable('preview-branch-changes')
     if (
       selectedState &&
       selectedState.type === SelectionType.MissingRepository
@@ -388,7 +388,7 @@ function getRepositoryMenuBuilder(state: IAppState): MenuStateBuilder {
   return menuStateBuilder
 }
 
-function getMenuState(state: IAppState): Map<MenuIDs, IMenuItemState> {
+export function getMenuState(state: IAppState): Map<MenuIDs, IMenuItemState> {
   if (state.currentPopup) {
     return getAllMenusDisabledBuilder().state
   }

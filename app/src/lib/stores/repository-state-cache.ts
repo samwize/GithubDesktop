@@ -18,7 +18,7 @@ import {
   ChangesSelectionKind,
   IMultiCommitOperationUndoState,
   IMultiCommitOperationState,
-  IPullRequestState,
+  IBranchComparisonState,
 } from '../app-state'
 import { merge } from '../merge'
 import { DefaultCommitMessage } from '../../models/commit-message'
@@ -234,12 +234,12 @@ export class RepositoryStateCache {
     })
   }
 
-  public initializePullRequestState(
+  public initializeBranchComparisonState(
     repository: Repository,
-    pullRequestState: IPullRequestState | null
+    branchComparisonState: IBranchComparisonState | null
   ) {
     this.update(repository, () => {
-      return { pullRequestState }
+      return { branchComparisonState }
     })
   }
 
@@ -308,52 +308,56 @@ export class RepositoryStateCache {
     this.repositoryState.delete(source.hash)
   }
 
-  private sendPullRequestStateNotExistsException() {
+  private sendBranchComparisonStateNotExistsException() {
     sendNonFatalException(
-      'PullRequestState',
-      new Error(`Cannot update a null pull request state`)
+      'BranchComparisonState',
+      new Error(`Cannot update a null branch comparison state`)
     )
   }
 
-  public updatePullRequestState<K extends keyof IPullRequestState>(
+  public updateBranchComparisonState<K extends keyof IBranchComparisonState>(
     repository: Repository,
-    fn: (pullRequestState: IPullRequestState) => Pick<IPullRequestState, K>
+    fn: (
+      branchComparisonState: IBranchComparisonState
+    ) => Pick<IBranchComparisonState, K>
   ) {
-    const { pullRequestState } = this.get(repository)
-    if (pullRequestState === null) {
-      this.sendPullRequestStateNotExistsException()
+    const { branchComparisonState } = this.get(repository)
+    if (branchComparisonState === null) {
+      this.sendBranchComparisonStateNotExistsException()
       return
     }
 
     this.update(repository, state => {
-      const oldState = state.pullRequestState
-      const pullRequestState =
+      const oldState = state.branchComparisonState
+      const branchComparisonState =
         oldState === null ? null : merge(oldState, fn(oldState))
-      return { pullRequestState }
+      return { branchComparisonState }
     })
   }
 
-  public updatePullRequestCommitSelection<K extends keyof ICommitSelection>(
+  public updateBranchComparisonCommitSelection<
+    K extends keyof ICommitSelection
+  >(
     repository: Repository,
-    fn: (prCommitSelection: ICommitSelection) => Pick<ICommitSelection, K>
+    fn: (commitSelection: ICommitSelection) => Pick<ICommitSelection, K>
   ) {
-    const { pullRequestState } = this.get(repository)
-    if (pullRequestState === null) {
-      this.sendPullRequestStateNotExistsException()
+    const { branchComparisonState } = this.get(repository)
+    if (branchComparisonState === null) {
+      this.sendBranchComparisonStateNotExistsException()
       return
     }
 
-    const oldState = pullRequestState.commitSelection
+    const oldState = branchComparisonState.commitSelection
     const commitSelection =
       oldState === null ? null : merge(oldState, fn(oldState))
-    this.updatePullRequestState(repository, () => ({
+    this.updateBranchComparisonState(repository, () => ({
       commitSelection,
     }))
   }
 
-  public clearPullRequestState(repository: Repository) {
+  public clearBranchComparisonState(repository: Repository) {
     this.update(repository, () => {
-      return { pullRequestState: null }
+      return { branchComparisonState: null }
     })
   }
 }
@@ -422,7 +426,7 @@ function getInitialRepositoryState(): IRepositoryState {
       recentBranches: new Array<Branch>(),
       defaultBranch: null,
     },
-    pullRequestState: null,
+    branchComparisonState: null,
     commitAuthor: null,
     commitLookup: new Map<string, Commit>(),
     localCommitSHAs: [],
