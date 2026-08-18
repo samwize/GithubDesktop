@@ -139,7 +139,7 @@ export class BranchComparisonDialog extends React.Component<IBranchComparisonDia
       return
     }
 
-    const { diff, file, changesetData, shas } = commitSelection
+    const { file, changesetData, shas } = commitSelection
     const { files } = changesetData
 
     if (shas.length === 0 || files.length === 0) {
@@ -148,7 +148,7 @@ export class BranchComparisonDialog extends React.Component<IBranchComparisonDia
 
     return (
       <BranchComparisonFilesChanged
-        diff={diff}
+        diffs={branchComparisonState.diffs}
         dispatcher={dispatcher}
         externalEditorLabel={externalEditorLabel}
         fileListWidth={fileListWidth}

@@ -11,6 +11,25 @@
   flex-grow: 1;
   position: relative;
 
+  &.render-all-rows {
+    flex-grow: 0;
+    overflow: visible;
+
+    .side-by-side-diff {
+      flex-grow: 0;
+    }
+
+    [role='row'] {
+      min-height: 20px;
+    }
+
+    > .diff-search {
+      align-self: flex-end;
+      position: sticky;
+      top: 36px;
+    }
+  }
+
   &,
   * {
     cursor: text;

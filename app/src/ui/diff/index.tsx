@@ -79,6 +79,12 @@ interface IDiffProps {
   /** Whether or not to show the diff check marks indicating inclusion in a commit */
   readonly showDiffCheckMarks: boolean
 
+  /** Render every text row into a parent scrolling document. */
+  readonly renderAllRows?: boolean
+
+  /** Whether this diff should handle the global Find command. */
+  readonly isActiveForGlobalFind?: boolean
+
   /**
    * Called when the user requests to open a binary file in an the
    * system-assigned application for said file type.
@@ -298,6 +304,8 @@ export class Diff extends React.Component<IDiffProps, IDiffState> {
         }
         onHideWhitespaceInDiffChanged={this.props.onHideWhitespaceInDiffChanged}
         showDiffCheckMarks={this.props.showDiffCheckMarks}
+        renderAllRows={this.props.renderAllRows}
+        isActiveForGlobalFind={this.props.isActiveForGlobalFind}
       />
     )
   }

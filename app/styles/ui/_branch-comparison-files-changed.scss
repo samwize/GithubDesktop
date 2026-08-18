@@ -26,4 +26,63 @@
   .file-list {
     border-right: var(--base-border);
   }
+
+  .branch-comparison-diffs {
+    background: var(--box-alt-background-color);
+    box-sizing: border-box;
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    padding: 0 var(--spacing) var(--spacing);
+
+    &.has-multiple-files::after {
+      content: '';
+      display: block;
+      height: calc(100% - 36px);
+    }
+  }
+
+  .branch-comparison-diff-section {
+    background: var(--background-color);
+    border: var(--base-border);
+    border-radius: var(--border-radius);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 300px;
+    overflow: clip;
+
+    &:first-child {
+      margin-top: var(--spacing);
+    }
+
+    &:not(:last-child) {
+      margin-bottom: var(--spacing-double);
+    }
+  }
+
+  .branch-comparison-diff-file-header {
+    align-items: center;
+    background: var(--box-alt-background-color);
+    border-bottom: var(--base-border);
+    display: flex;
+    font-weight: var(--font-weight-semibold);
+    gap: var(--spacing);
+    min-height: 36px;
+    padding: 0 var(--spacing);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+
+    .file-path {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .branch-comparison-diff-section-body {
+    display: flex;
+    min-height: 120px;
+  }
 }

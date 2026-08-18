@@ -51,6 +51,7 @@ import {
   DiffSelectionType,
   DiffType,
   ImageDiffType,
+  IDiff,
   ITextDiff,
 } from '../../models/diff'
 import { FetchType } from '../../models/fetch'
@@ -527,6 +528,7 @@ const BackgroundFetchMinimumInterval = 30 * 60 * 1000
 const InitialRepositoryIndicatorTimeout = 2 * 60 * 1000
 
 const MaxInvalidFoldersToDisplay = 3
+const BranchComparisonDiffLoadConcurrency = 4
 
 const lastThankYouKey = 'version-and-users-of-last-thank-you'
 const pullRequestSuggestedNextActionKey =
@@ -8027,9 +8029,37 @@ export class AppStore extends TypedBaseStore<IAppState> {
     setBoolean(hideWhitespaceInBranchComparisonDiffKey, hideWhitespaceInDiff)
     this.hideWhitespaceInBranchComparisonDiff = hideWhitespaceInDiff
 
-    if (file !== null) {
-      this._changeBranchComparisonFileSelection(repository, file)
+    const { branchComparisonState } = this.repositoryStateCache.get(repository)
+    if (branchComparisonState?.commitSelection == null) {
+      return
     }
+
+    const diffGeneration = ++this.branchComparisonDiffGeneration
+    this.repositoryStateCache.updateBranchComparisonState(repository, () => ({
+      diffs: new Map(),
+    }))
+    this.repositoryStateCache.updateBranchComparisonCommitSelection(
+      repository,
+      () => ({ diff: null })
+    )
+    this.emitUpdate()
+
+    const files = branchComparisonState.commitSelection.changesetData.files
+    const selectedFile = file ?? branchComparisonState.commitSelection.file
+    const orderedFiles =
+      selectedFile === null
+        ? files
+        : [
+            selectedFile,
+            ...files.filter(candidate => candidate.id !== selectedFile.id),
+          ]
+
+    void this.loadBranchComparisonDiffs(
+      repository,
+      orderedFiles,
+      this.branchComparisonGeneration,
+      diffGeneration
+    )
   }
 
   public _setShowSideBySideDiff(showSideBySideDiff: boolean) {
@@ -10036,6 +10066,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     showPopupWhenReady: boolean
   ) {
     const generation = ++this.branchComparisonGeneration
+    const diffGeneration = ++this.branchComparisonDiffGeneration
     const emptyChangeSet = { files: [], linesAdded: 0, linesDeleted: 0 }
 
     if (baseBranch === null) {
@@ -10049,6 +10080,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.repositoryStateCache.initializeBranchComparisonState(repository, {
         baseBranch,
         commitSHAs: null,
+        diffs: new Map(),
         commitSelection: {
           shas: [],
           shasInDiff: [],
@@ -10110,6 +10142,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.repositoryStateCache.initializeBranchComparisonState(repository, {
       baseBranch,
       commitSHAs,
+      diffs: new Map(),
       commitSelection: {
         shas: commitSHAs,
         shasInDiff: commitSHAs,
@@ -10149,6 +10182,15 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (showPopupWhenReady && generation === this.branchComparisonGeneration) {
       this.showBranchComparisonPopup(repository, currentBranch)
     }
+
+    if (changesetData !== null && changesetData.files.length > 1) {
+      void this.loadBranchComparisonDiffs(
+        repository,
+        changesetData.files.slice(1),
+        generation,
+        diffGeneration
+      )
+    }
   }
 
   public showBranchComparisonPopupNoBaseBranch(
@@ -10159,6 +10201,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       baseBranch: null,
       commitSHAs: null,
       commitSelection: null,
+      diffs: new Map(),
       mergeStatus: null,
     })
 
@@ -10207,7 +10250,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     file: CommittedFileChange,
     generation = this.branchComparisonGeneration
   ): Promise<void> {
-    const diffGeneration = ++this.branchComparisonDiffGeneration
     const { branchesState, branchComparisonState } =
       this.repositoryStateCache.get(repository)
 
@@ -10219,28 +10261,116 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     const currentBranch = branchesState.tip.branch
-    const { baseBranch, commitSHAs } = branchComparisonState
+    const { baseBranch, commitSHAs, diffs } = branchComparisonState
     if (commitSHAs === null || baseBranch === null) {
       return
     }
+
+    const cachedDiff = diffs.get(file.id)
 
     this.repositoryStateCache.updateBranchComparisonCommitSelection(
       repository,
       () => ({
         file,
-        diff: null,
+        diff: cachedDiff ?? null,
       })
     )
 
     this.emitUpdate()
 
-    if (commitSHAs.length === 0) {
-      // Shouldn't happen at this point, but if so moving forward doesn't
-      // make sense
+    if (commitSHAs.length === 0 || diffs.has(file.id)) {
       return
     }
 
-    const diff =
+    await this.loadBranchComparisonDiff(
+      repository,
+      file,
+      baseBranch,
+      currentBranch,
+      commitSHAs[0],
+      generation,
+      this.branchComparisonDiffGeneration
+    )
+  }
+
+  private async loadBranchComparisonDiffs(
+    repository: Repository,
+    files: ReadonlyArray<CommittedFileChange>,
+    generation: number,
+    diffGeneration: number
+  ): Promise<void> {
+    let nextFile = 0
+    const workers = Math.min(files.length, BranchComparisonDiffLoadConcurrency)
+
+    await Promise.all(
+      Array.from({ length: workers }, async () => {
+        while (nextFile < files.length) {
+          if (
+            !this.isCurrentBranchComparisonDiffLoad(generation, diffGeneration)
+          ) {
+            return
+          }
+
+          const file = files[nextFile++]
+          const { branchesState, branchComparisonState } =
+            this.repositoryStateCache.get(repository)
+
+          if (
+            branchesState.tip.kind !== TipState.Valid ||
+            branchComparisonState === null ||
+            branchComparisonState.baseBranch === null ||
+            branchComparisonState.commitSHAs === null
+          ) {
+            return
+          }
+
+          const { baseBranch, commitSHAs, diffs } = branchComparisonState
+          if (commitSHAs.length === 0 || diffs.has(file.id)) {
+            continue
+          }
+
+          await this.loadBranchComparisonDiff(
+            repository,
+            file,
+            baseBranch,
+            branchesState.tip.branch,
+            commitSHAs[0],
+            generation,
+            diffGeneration
+          )
+        }
+      })
+    )
+  }
+
+  private async loadBranchComparisonDiff(
+    repository: Repository,
+    file: CommittedFileChange,
+    baseBranch: Branch,
+    currentBranch: Branch,
+    firstCommitSHA: string,
+    generation: number,
+    diffGeneration: number
+  ): Promise<void> {
+    if (!this.isCurrentBranchComparisonDiffLoad(generation, diffGeneration)) {
+      return
+    }
+
+    const { branchComparisonState } = this.repositoryStateCache.get(repository)
+    if (
+      branchComparisonState === null ||
+      branchComparisonState.diffs.has(file.id)
+    ) {
+      return
+    }
+
+    const loadingDiffs = new Map(branchComparisonState.diffs)
+    loadingDiffs.set(file.id, null)
+    this.repositoryStateCache.updateBranchComparisonState(repository, () => ({
+      diffs: loadingDiffs,
+    }))
+
+    const diff: IDiff | null =
       (await this.gitStoreCache
         .get(repository)
         .performFailableOperation(() =>
@@ -10250,21 +10380,18 @@ export class AppStore extends TypedBaseStore<IAppState> {
             baseBranch.name,
             currentBranch.name,
             this.hideWhitespaceInBranchComparisonDiff,
-            commitSHAs[0]
+            firstCommitSHA
           )
         )) ?? null
 
     const { branchComparisonState: stateAfterLoad } =
       this.repositoryStateCache.get(repository)
-    const selectedFileAfterDiffLoad = stateAfterLoad?.commitSelection?.file
     const baseBranchAfterDiffLoad = stateAfterLoad?.baseBranch
     const tipAfterDiffLoad =
       this.repositoryStateCache.get(repository).branchesState.tip
 
     if (
-      generation !== this.branchComparisonGeneration ||
-      diffGeneration !== this.branchComparisonDiffGeneration ||
-      selectedFileAfterDiffLoad?.id !== file.id ||
+      !this.isCurrentBranchComparisonDiffLoad(generation, diffGeneration) ||
       baseBranchAfterDiffLoad?.ref !== baseBranch.ref ||
       tipAfterDiffLoad.kind !== TipState.Valid ||
       tipAfterDiffLoad.branch.ref !== currentBranch.ref
@@ -10272,14 +10399,34 @@ export class AppStore extends TypedBaseStore<IAppState> {
       return
     }
 
-    this.repositoryStateCache.updateBranchComparisonCommitSelection(
-      repository,
-      () => ({
-        diff,
-      })
-    )
+    const diffs = new Map(stateAfterLoad?.diffs)
+    if (diff === null) {
+      diffs.delete(file.id)
+    } else {
+      diffs.set(file.id, diff)
+    }
+    this.repositoryStateCache.updateBranchComparisonState(repository, () => ({
+      diffs,
+    }))
+
+    if (stateAfterLoad?.commitSelection?.file?.id === file.id) {
+      this.repositoryStateCache.updateBranchComparisonCommitSelection(
+        repository,
+        () => ({ diff })
+      )
+    }
 
     this.emitUpdate()
+  }
+
+  private isCurrentBranchComparisonDiffLoad(
+    generation: number,
+    diffGeneration: number
+  ): boolean {
+    return (
+      generation === this.branchComparisonGeneration &&
+      diffGeneration === this.branchComparisonDiffGeneration
+    )
   }
 
   public _setBranchComparisonFileListWidth(width: number): Promise<void> {

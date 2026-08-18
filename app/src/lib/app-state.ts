@@ -1192,6 +1192,9 @@ export interface IBranchComparisonState {
    */
   readonly commitSelection: ICommitSelection | null
 
+  /** Diffs loaded for the changed files, keyed by file ID. */
+  readonly diffs: ReadonlyMap<string, IDiff | null>
+
   /** The result of merging the current branch into the base branch. */
   readonly mergeStatus: MergeTreeResult | null
 }

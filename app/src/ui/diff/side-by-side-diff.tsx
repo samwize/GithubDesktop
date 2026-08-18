@@ -148,6 +148,12 @@ interface ISideBySideDiffProps {
   /** Whether or not to show the diff check marks indicating inclusion in a commit */
   readonly showDiffCheckMarks: boolean
 
+  /** Render every row into a parent scrolling document. */
+  readonly renderAllRows?: boolean
+
+  /** Whether this diff should handle the global Find command. */
+  readonly isActiveForGlobalFind?: boolean
+
   /** Called when the user changes the hide whitespace in diffs setting. */
   readonly onHideWhitespaceInDiffChanged: (checked: boolean) => void
 }
@@ -276,11 +282,9 @@ export class SideBySideDiff extends React.Component<
   public componentDidMount() {
     this.initDiffSyntaxMode()
 
-    window.addEventListener('keydown', this.onWindowKeyDown)
-
-    // Listen for the custom event find-text (see app.tsx)
-    // and trigger the search plugin if we see it.
-    document.addEventListener('find-text', this.showSearch)
+    if (this.props.isActiveForGlobalFind !== false) {
+      this.addGlobalFindListeners()
+    }
 
     document.addEventListener('cut', this.onCutOrCopy)
     document.addEventListener('copy', this.onCutOrCopy)
@@ -290,16 +294,33 @@ export class SideBySideDiff extends React.Component<
     this.addContextMenuListenerToDiff()
   }
 
+  private addGlobalFindListeners() {
+    window.addEventListener('keydown', this.onWindowKeyDown)
+    document.addEventListener('find-text', this.showSearch)
+  }
+
+  private removeGlobalFindListeners() {
+    window.removeEventListener('keydown', this.onWindowKeyDown)
+    document.removeEventListener('find-text', this.showSearch)
+  }
+
   private addContextMenuListenerToDiff = () => {
-    const diffNode = findDOMNode(this.virtualListRef.current)
-    const diff = diffNode instanceof HTMLElement ? diffNode : null
+    const diff = this.getDiffElement()
     diff?.addEventListener('contextmenu', this.onContextMenuText)
   }
 
   private removeContextMenuListenerFromDiff = () => {
-    const diffNode = findDOMNode(this.virtualListRef.current)
-    const diff = diffNode instanceof HTMLElement ? diffNode : null
+    const diff = this.getDiffElement()
     diff?.removeEventListener('contextmenu', this.onContextMenuText)
+  }
+
+  private getDiffElement() {
+    if (this.props.renderAllRows) {
+      return this.diffContainer
+    }
+
+    const diffNode = findDOMNode(this.virtualListRef.current)
+    return diffNode instanceof HTMLElement ? diffNode : null
   }
 
   private onCutOrCopy = (ev: ClipboardEvent) => {
@@ -413,9 +434,10 @@ export class SideBySideDiff extends React.Component<
   }
 
   public componentWillUnmount() {
-    window.removeEventListener('keydown', this.onWindowKeyDown)
+    this.removeGlobalFindListeners()
     document.removeEventListener('mouseup', this.onEndSelection)
-    document.removeEventListener('find-text', this.showSearch)
+    document.removeEventListener('cut', this.onCutOrCopy)
+    document.removeEventListener('copy', this.onCutOrCopy)
     document.removeEventListener(
       'selectionchange',
       this.onDocumentSelectionChange
@@ -428,6 +450,21 @@ export class SideBySideDiff extends React.Component<
     prevProps: ISideBySideDiffProps,
     prevState: ISideBySideDiffState
   ) {
+    const wasActiveForGlobalFind = prevProps.isActiveForGlobalFind !== false
+    const isActiveForGlobalFind = this.props.isActiveForGlobalFind !== false
+
+    if (wasActiveForGlobalFind !== isActiveForGlobalFind) {
+      if (isActiveForGlobalFind) {
+        this.addGlobalFindListeners()
+      } else {
+        this.removeGlobalFindListeners()
+
+        if (this.state.isSearching) {
+          this.resetSearch(false)
+        }
+      }
+    }
+
     if (
       !highlightParametersEqual(this.props, prevProps, this.state, prevState)
     ) {
@@ -595,6 +632,7 @@ export class SideBySideDiff extends React.Component<
     const rows = this.getCurrentDiffRows()
     const containerClassName = classNames('side-by-side-diff-container', {
       'unified-diff': !this.props.showSideBySideDiff,
+      'render-all-rows': this.props.renderAllRows,
       [`selecting-${this.state.selectingTextInRow}`]:
         this.props.showSideBySideDiff &&
         this.state.selectingTextInRow !== undefined,
@@ -628,38 +666,44 @@ export class SideBySideDiff extends React.Component<
             message={ariaLiveMessage}
             trackedUserInput={this.ariaLiveChangeSignal}
           />
-          <AutoSizer onResize={this.clearListRowsHeightCache}>
-            {({ height, width }) => (
-              <List
-                deferredMeasurementCache={listRowsHeightCache}
-                width={width}
-                height={height}
-                rowCount={rows.length}
-                rowHeight={this.getRowHeight}
-                rowRenderer={this.renderRow}
-                onRowsRendered={this.onRowsRendered}
-                ref={this.virtualListRef}
-                overscanIndicesGetter={this.overscanIndicesGetter}
-                // The following properties are passed to the list
-                // to make sure that it gets re-rendered when any of
-                // them change.
-                isSearching={isSearching}
-                selectedSearchResult={this.state.selectedSearchResult}
-                searchQuery={this.state.searchQuery}
-                showSideBySideDiff={this.props.showSideBySideDiff}
-                beforeTokens={this.state.beforeTokens}
-                afterTokens={this.state.afterTokens}
-                temporarySelection={this.state.temporarySelection}
-                hoveredHunk={this.state.hoveredHunk}
-                showDiffCheckMarks={this.props.showDiffCheckMarks}
-                isSelectable={canSelect(this.props.file)}
-                fileSelection={this.getSelection()}
-                // rows are memoized and include things like the
-                // noNewlineIndicator
-                rows={rows}
-              />
-            )}
-          </AutoSizer>
+          {this.props.renderAllRows ? (
+            rows.map((_, index) =>
+              this.renderRowContents(index, `diff-row-${index}`)
+            )
+          ) : (
+            <AutoSizer onResize={this.clearListRowsHeightCache}>
+              {({ height, width }) => (
+                <List
+                  deferredMeasurementCache={listRowsHeightCache}
+                  width={width}
+                  height={height}
+                  rowCount={rows.length}
+                  rowHeight={this.getRowHeight}
+                  rowRenderer={this.renderRow}
+                  onRowsRendered={this.onRowsRendered}
+                  ref={this.virtualListRef}
+                  overscanIndicesGetter={this.overscanIndicesGetter}
+                  // The following properties are passed to the list
+                  // to make sure that it gets re-rendered when any of
+                  // them change.
+                  isSearching={isSearching}
+                  selectedSearchResult={this.state.selectedSearchResult}
+                  searchQuery={this.state.searchQuery}
+                  showSideBySideDiff={this.props.showSideBySideDiff}
+                  beforeTokens={this.state.beforeTokens}
+                  afterTokens={this.state.afterTokens}
+                  temporarySelection={this.state.temporarySelection}
+                  hoveredHunk={this.state.hoveredHunk}
+                  showDiffCheckMarks={this.props.showDiffCheckMarks}
+                  isSelectable={canSelect(this.props.file)}
+                  fileSelection={this.getSelection()}
+                  // rows are memoized and include things like the
+                  // noNewlineIndicator
+                  rows={rows}
+                />
+              )}
+            </AutoSizer>
+          )}
         </div>
       </div>
     )
@@ -857,6 +901,29 @@ export class SideBySideDiff extends React.Component<
   }
 
   private renderRow = ({ index, parent, style, key }: ListRowProps) => {
+    const row = this.renderRowContents(index, key, style)
+    if (row === null) {
+      return null
+    }
+
+    return (
+      <CellMeasurer
+        cache={listRowsHeightCache}
+        columnIndex={0}
+        key={key}
+        parent={parent}
+        rowIndex={index}
+      >
+        {row}
+      </CellMeasurer>
+    )
+  }
+
+  private renderRowContents = (
+    index: number,
+    key: string,
+    style?: React.CSSProperties
+  ) => {
     const { diff } = this.state
     const rows = getDiffRows(
       diff,
@@ -891,44 +958,39 @@ export class SideBySideDiff extends React.Component<
 
     const rowWithTokens = this.createFullRow(row, index)
 
-    const rowSelectableGroupDetails = this.getRowSelectableGroupDetails(index)
+    const isDiffSelectable = canSelect(this.props.file)
+    const rowSelectableGroupDetails = isDiffSelectable
+      ? this.getRowSelectableGroupDetails(index)
+      : null
 
     return (
-      <CellMeasurer
-        cache={listRowsHeightCache}
-        columnIndex={0}
-        key={key}
-        parent={parent}
-        rowIndex={index}
-      >
-        <div key={key} style={style} role="row" aria-rowindex={index}>
-          <SideBySideDiffRow
-            row={rowWithTokens}
-            lineNumberWidth={lineNumberWidth}
-            numRow={index}
-            isDiffSelectable={canSelect(this.props.file)}
-            rowSelectableGroup={rowSelectableGroupDetails}
-            showSideBySideDiff={this.props.showSideBySideDiff}
-            hideWhitespaceInDiff={this.props.hideWhitespaceInDiff}
-            showDiffCheckMarks={this.props.showDiffCheckMarks}
-            onStartSelection={this.onStartSelection}
-            onMouseEnterHunk={this.onMouseEnterHunk}
-            onMouseLeaveHunk={this.onMouseLeaveHunk}
-            onExpandHunk={this.onExpandHunk}
-            onClickHunk={this.onClickHunk}
-            onContextMenuLine={this.onContextMenuLine}
-            onContextMenuHunk={this.onContextMenuHunk}
-            onContextMenuExpandHunk={this.onContextMenuExpandHunk}
-            onHideWhitespaceInDiffChanged={
-              this.props.onHideWhitespaceInDiffChanged
-            }
-            beforeClassNames={beforeClassNames}
-            afterClassNames={afterClassNames}
-            onHunkExpansionRef={this.onHunkExpansionRef}
-            onLineNumberCheckedChanged={this.onLineNumberCheckedChanged}
-          />
-        </div>
-      </CellMeasurer>
+      <div key={key} style={style} role="row" aria-rowindex={index}>
+        <SideBySideDiffRow
+          row={rowWithTokens}
+          lineNumberWidth={lineNumberWidth}
+          numRow={index}
+          isDiffSelectable={isDiffSelectable}
+          rowSelectableGroup={rowSelectableGroupDetails}
+          showSideBySideDiff={this.props.showSideBySideDiff}
+          hideWhitespaceInDiff={this.props.hideWhitespaceInDiff}
+          showDiffCheckMarks={this.props.showDiffCheckMarks}
+          onStartSelection={this.onStartSelection}
+          onMouseEnterHunk={this.onMouseEnterHunk}
+          onMouseLeaveHunk={this.onMouseLeaveHunk}
+          onExpandHunk={this.onExpandHunk}
+          onClickHunk={this.onClickHunk}
+          onContextMenuLine={this.onContextMenuLine}
+          onContextMenuHunk={this.onContextMenuHunk}
+          onContextMenuExpandHunk={this.onContextMenuExpandHunk}
+          onHideWhitespaceInDiffChanged={
+            this.props.onHideWhitespaceInDiffChanged
+          }
+          beforeClassNames={beforeClassNames}
+          afterClassNames={afterClassNames}
+          onHunkExpansionRef={this.onHunkExpansionRef}
+          onLineNumberCheckedChanged={this.onLineNumberCheckedChanged}
+        />
+      </div>
     )
   }
 
@@ -1607,7 +1669,7 @@ export class SideBySideDiff extends React.Component<
   }
 
   private onWindowKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) {
+    if (event.defaultPrevented || this.props.isActiveForGlobalFind === false) {
       return
     }
 
@@ -1622,7 +1684,7 @@ export class SideBySideDiff extends React.Component<
   }
 
   private showSearch = () => {
-    if (!this.state.isSearching) {
+    if (this.props.isActiveForGlobalFind !== false && !this.state.isSearching) {
       this.resetSearch(true)
     }
   }
@@ -1703,7 +1765,15 @@ export class SideBySideDiff extends React.Component<
     const scrollToRow = searchResults?.get(index)?.row
 
     if (scrollToRow !== undefined) {
-      this.virtualListRef.current?.scrollToRow(scrollToRow)
+      if (this.props.renderAllRows) {
+        this.diffContainer
+          ?.querySelector<HTMLElement>(
+            `div[role=row][aria-rowindex="${scrollToRow}"]`
+          )
+          ?.scrollIntoView({ block: 'center' })
+      } else {
+        this.virtualListRef.current?.scrollToRow(scrollToRow)
+      }
     }
   }
 
