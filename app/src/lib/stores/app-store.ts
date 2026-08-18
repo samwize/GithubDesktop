@@ -217,10 +217,9 @@ import {
   RepositoryType,
   listWorktrees,
   listWorktreesFromGitDir,
-  getWorktreeRemovalStatus,
   getPullRequestHeadSha,
   isPullRequestMergedIntoBranch,
-  removeIgnoredWorktreeFiles,
+  isWorktreeClean,
   removeWorktree,
   moveWorktree,
   getCommitRangeDiff,
@@ -6243,8 +6242,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       await Promise.all(
         candidates.map(async worktree => {
           try {
-            const status = await getWorktreeRemovalStatus(worktree.path)
-            if (status === 'dirty') {
+            if (!(await isWorktreeClean(worktree.path))) {
               return null
             }
 
@@ -6252,7 +6250,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
               repository,
               worktree
             ))
-              ? { worktree, hasIgnoredFiles: status === 'ignored-only' }
+              ? worktree
               : null
           } catch (e) {
             log.error(`Could not check worktree status at ${worktree.path}`, e)
@@ -6260,14 +6258,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
           }
         })
       )
-    ).filter(
-      (
-        candidate
-      ): candidate is {
-        readonly worktree: WorktreeEntry
-        readonly hasIgnoredFiles: boolean
-      } => candidate !== null
-    )
+    ).filter((worktree): worktree is WorktreeEntry => worktree !== null)
 
     if (removableWorktrees.length === 0) {
       return
@@ -6283,9 +6274,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const otherWindowPaths = await loadOtherWindowPaths()
     removableWorktrees = removableWorktrees.filter(
       candidate =>
-        !otherWindowPaths.has(
-          this.normalizeRepositoryPath(candidate.worktree.path)
-        )
+        !otherWindowPaths.has(this.normalizeRepositoryPath(candidate.path))
     )
 
     if (removableWorktrees.length === 0) {
@@ -6293,7 +6282,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     const currentWorktree = removableWorktrees.find(
-      candidate => candidate.worktree.path === repository.path
+      worktree => worktree.path === repository.path
     )
 
     if (currentWorktree !== undefined) {
@@ -6307,7 +6296,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     let firstError: Error | null = null
 
-    for (const { worktree, hasIgnoredFiles } of removableWorktrees) {
+    for (const worktree of removableWorktrees) {
       const latestOtherWindowPaths = await loadOtherWindowPaths()
       if (
         latestOtherWindowPaths.has(this.normalizeRepositoryPath(worktree.path))
@@ -6316,9 +6305,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
       }
 
       try {
-        if (hasIgnoredFiles) {
-          await removeIgnoredWorktreeFiles(worktree.path)
-        }
         await removeWorktree(repository.path, worktree.path)
         this.statsStore.increment('worktreeDeletedCount')
       } catch (e) {

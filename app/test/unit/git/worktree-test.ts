@@ -7,13 +7,11 @@ import { setupEmptyRepository } from '../../helpers/repositories'
 import { makeCommit } from '../../helpers/repository-scaffolding'
 import {
   getPullRequestHeadSha,
-  getWorktreeRemovalStatus,
   isPullRequestMergedIntoBranch,
   parseWorktreePorcelainOutput,
   isWorktreeClean,
   listWorktrees,
   listWorktreesFromGitDir,
-  removeIgnoredWorktreeFiles,
   removeWorktree,
 } from '../../../src/lib/git'
 
@@ -352,7 +350,7 @@ describe('git/worktree', () => {
       assert.strictEqual(await isWorktreeClean(repo.path), false)
     })
 
-    it('returns false for ignored files', async t => {
+    it('returns true for ignored files', async t => {
       const repo = await setupEmptyRepository(t, 'main')
       await makeCommit(repo, {
         entries: [{ path: '.gitignore', contents: '.env\n' }],
@@ -360,11 +358,7 @@ describe('git/worktree', () => {
 
       await writeFile(Path.join(repo.path, '.env'), 'SECRET=value')
 
-      assert.strictEqual(await isWorktreeClean(repo.path), false)
-      assert.strictEqual(
-        await getWorktreeRemovalStatus(repo.path),
-        'ignored-only'
-      )
+      assert.strictEqual(await isWorktreeClean(repo.path), true)
     })
   })
 
@@ -401,8 +395,8 @@ describe('git/worktree', () => {
     })
   })
 
-  describe('removeIgnoredWorktreeFiles', () => {
-    it('keeps the final dirty-worktree guard active', async t => {
+  describe('removeWorktree', () => {
+    it('removes a worktree containing ignored files', async t => {
       const repo = await setupEmptyRepository(t, 'main')
       await makeCommit(repo, {
         entries: [
@@ -415,7 +409,24 @@ describe('git/worktree', () => {
       t.after(() => rm(worktreePath, { recursive: true, force: true }))
 
       await writeFile(Path.join(worktreePath, 'ignored'), 'generated')
-      await removeIgnoredWorktreeFiles(worktreePath)
+      await removeWorktree(repo.path, worktreePath)
+
+      assert(
+        !(await listWorktrees(repo)).some(
+          worktree => worktree.path === worktreePath
+        )
+      )
+    })
+
+    it('refuses to remove a worktree containing untracked files', async t => {
+      const repo = await setupEmptyRepository(t, 'main')
+      await makeCommit(repo, {
+        entries: [{ path: 'README', contents: 'hello' }],
+      })
+      const worktreePath = Path.join(repo.path, '..', 'linked-worktree')
+      await exec(['worktree', 'add', worktreePath], repo.path)
+      t.after(() => rm(worktreePath, { recursive: true, force: true }))
+
       await writeFile(Path.join(worktreePath, 'untracked'), 'important')
 
       await assert.rejects(removeWorktree(repo.path, worktreePath))
