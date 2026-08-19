@@ -169,6 +169,10 @@ import {
   launchExternalEditor,
 } from '../editors'
 import { assertNever, fatalError, forceUnwrap } from '../fatal-error'
+import {
+  getBranchComparisonBaseRef,
+  resolveBranchComparisonBase,
+} from '../branch-comparison'
 
 import { formatCommitMessage } from '../format-commit-message'
 import {
@@ -10095,9 +10099,24 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
 
     const gitStore = this.gitStoreCache.get(repository)
+    const baseBranchRef = getBranchComparisonBaseRef(baseBranch)
+    const baseCommit =
+      baseBranchRef === baseBranch.name
+        ? null
+        : await gitStore.performFailableOperation(() =>
+            getCommit(repository, baseBranchRef)
+          )
+    const {
+      stateBranch: branchComparisonBaseBranch,
+      comparisonBranch: comparisonBaseBranch,
+    } = resolveBranchComparisonBase(baseBranch, baseCommit?.sha ?? null)
+
+    if (generation !== this.branchComparisonGeneration) {
+      return
+    }
 
     const comparisonCommits = await gitStore.getCommitsBetweenBranches(
-      baseBranch,
+      comparisonBaseBranch,
       currentBranch
     )
 
@@ -10113,7 +10132,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
         ? await gitStore.performFailableOperation(() =>
             getBranchMergeBaseChangedFiles(
               repository,
-              baseBranch.name,
+              comparisonBaseBranch.name,
               currentBranch.name,
               commitsBetweenBranches[0]
             )
@@ -10140,7 +10159,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const commitSHAs = hasMergeBase ? commitsBetweenBranches : []
 
     this.repositoryStateCache.initializeBranchComparisonState(repository, {
-      baseBranch,
+      baseBranch: branchComparisonBaseBranch,
       commitSHAs,
       diffs: new Map(),
       commitSelection: {
@@ -10166,7 +10185,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (commitSHAs.length > 0) {
       this.setupBranchComparisonMergeTreePromise(
         repository,
-        baseBranch,
+        comparisonBaseBranch,
         currentBranch,
         generation
       )
@@ -10377,7 +10396,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
           getBranchMergeBaseDiff(
             repository,
             file,
-            baseBranch.name,
+            getBranchComparisonBaseRef(baseBranch),
             currentBranch.name,
             this.hideWhitespaceInBranchComparisonDiff,
             firstCommitSHA
