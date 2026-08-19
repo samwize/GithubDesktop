@@ -169,7 +169,10 @@ import {
   launchExternalEditor,
 } from '../editors'
 import { assertNever, fatalError, forceUnwrap } from '../fatal-error'
-import { getBranchComparisonBaseRef } from '../branch-comparison'
+import {
+  getBranchComparisonBaseRef,
+  resolveBranchComparisonBase,
+} from '../branch-comparison'
 
 import { formatCommitMessage } from '../format-commit-message'
 import {
@@ -10103,16 +10106,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
         : await gitStore.performFailableOperation(() =>
             getCommit(repository, baseBranchRef)
           )
-    const comparisonBaseBranch =
-      baseBranchRef === baseBranch.name
-        ? baseBranch
-        : new Branch(
-            baseBranchRef,
-            null,
-            { sha: baseCommit?.sha ?? baseBranch.tip.sha },
-            BranchType.Remote,
-            `refs/remotes/${baseBranchRef}`
-          )
+    const {
+      stateBranch: branchComparisonBaseBranch,
+      comparisonBranch: comparisonBaseBranch,
+    } = resolveBranchComparisonBase(baseBranch, baseCommit?.sha ?? null)
 
     if (generation !== this.branchComparisonGeneration) {
       return
@@ -10162,7 +10159,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const commitSHAs = hasMergeBase ? commitsBetweenBranches : []
 
     this.repositoryStateCache.initializeBranchComparisonState(repository, {
-      baseBranch,
+      baseBranch: branchComparisonBaseBranch,
       commitSHAs,
       diffs: new Map(),
       commitSelection: {
