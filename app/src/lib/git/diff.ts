@@ -159,11 +159,20 @@ export async function getBranchMergeBaseDiff(
   hideWhitespaceInDiff: boolean = false,
   latestCommit: string
 ): Promise<IDiff> {
+  const diffFilter =
+    file.status.kind === AppFileStatusKind.Copied
+      ? 'C'
+      : file.status.kind === AppFileStatusKind.Renamed
+      ? 'R'
+      : null
   const args = [
     'diff',
     '--merge-base',
     baseBranchName,
     comparisonBranchName,
+    '-C',
+    '-M',
+    ...(diffFilter === null ? [] : [`--diff-filter=${diffFilter}`]),
     ...(hideWhitespaceInDiff ? ['-w'] : []),
     '--patch-with-raw',
     '-z',

@@ -734,5 +734,62 @@ describe('git/diff', () => {
       assert(!diff.text.includes('bar'))
       assert(diff.text.includes('feature'))
     })
+
+    it('loads only the requested copy when its source is also modified', async t => {
+      const repoPath = await setupFixtureRepository(t, 'submodule-basic-setup')
+      const repository = new Repository(repoPath, -1, null, false)
+      const originalLines = Array.from(
+        { length: 40 },
+        (_, index) => `original line ${index}`
+      )
+
+      await makeCommit(repository, {
+        entries: [{ path: 'source.txt', contents: originalLines.join('\n') }],
+      })
+      await exec(['branch', 'feature-branch'], repository.path)
+      await switchTo(repository, 'feature-branch')
+
+      const sourceLines = [...originalLines]
+      sourceLines[0] = 'source-only change'
+      const copyLines = [...originalLines]
+      copyLines[39] = 'copy feature change'
+      await makeCommit(repository, {
+        entries: [
+          { path: 'source.txt', contents: sourceLines.join('\n') },
+          { path: 'copy.txt', contents: copyLines.join('\n') },
+        ],
+      })
+
+      const changesetData = await getBranchMergeBaseChangedFiles(
+        repository,
+        'master',
+        'feature-branch',
+        'irrelevantToTest'
+      )
+
+      assert(changesetData !== null)
+      const copiedFile = changesetData.files.find(
+        file => file.path === 'copy.txt'
+      )
+      assert(copiedFile !== undefined)
+      assert.equal(copiedFile.status.kind, AppFileStatusKind.Copied)
+
+      const diff = await getBranchMergeBaseDiff(
+        repository,
+        copiedFile,
+        'master',
+        'feature-branch',
+        false,
+        'irrelevantToTest'
+      )
+
+      assert.equal(diff.kind, DiffType.Text)
+      if (diff.kind !== DiffType.Text) {
+        return
+      }
+
+      assert(diff.text.includes('copy feature change'))
+      assert(!diff.text.includes('source-only change'))
+    })
   })
 })

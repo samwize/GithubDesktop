@@ -23,6 +23,7 @@ import {
   DefaultCommitMessage,
 } from '../../models/commit-message'
 import { ComparisonMode } from '../app-state'
+import { getBranchComparisonBaseRef } from '../branch-comparison'
 
 import { IAppShell } from '../app-shell'
 import {
@@ -1773,7 +1774,10 @@ export class GitStore extends BaseStore {
     baseBranch: Branch,
     comparisonBranch: Branch
   ): Promise<ReadonlyArray<Commit>> {
-    const revisionRange = revRange(baseBranch.name, comparisonBranch.name)
+    const revisionRange = revRange(
+      getBranchComparisonBaseRef(baseBranch),
+      comparisonBranch.name
+    )
     const commits = await this.performFailableOperation(() =>
       getCommits(this.repository, revisionRange)
     )

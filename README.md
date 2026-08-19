@@ -13,7 +13,9 @@ So I stopped waiting.
 
 1. Open multiple repositories in independent windows.
 2. Commits and branch timeline.
-3. Add several local repositories at once by choosing their parent folder.
+3. Preview every committed change between local branches without publishing a
+   pull request.
+4. Add several local repositories at once by choosing their parent folder.
 
 ### 1. One project, one window
 
@@ -56,6 +58,26 @@ ahead and behind status, making divergence visible at a glance.
 
 No mode switch. No context reset. Just where the repository is now, and exactly
 how it got there.
+
+### 3. Review a branch before you publish it
+
+Open **Branch → Preview Branch Changes…** or press `Cmd` + `Option` + `P` on
+macOS (`Ctrl` + `Alt` + `P` on Windows and Linux). Choose another branch as the
+base and GitPub shows the combined committed diff against your current branch.
+
+The comparison is completely local. It works before you push the branch or
+create a pull request, including when the current branch is checked out in a
+worktree.
+
+Every changed file appears in one continuous, vertically scrolling document.
+The file list stays on the left; click a file and its diff scrolls to the top.
+You can switch between unified and split views, hide whitespace changes, and
+review new, modified, renamed, and deleted files in the same place.
+
+It is the useful part of a GitHub **Files changed** view, available before
+GitHub needs to be involved.
+
+See the [GitPub changelog](./CHANGELOG.md) for fork-specific release notes.
 
 ## Run it
 
