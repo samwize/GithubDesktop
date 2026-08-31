@@ -3,8 +3,8 @@
   "productName": "GitPub",
   "bundleID": "com.just2us.GitPub",
   "companyName": "Just2us",
-  "version": "4.1.0",
-  "buildNumber": "40100",
+  "version": "4.1.1",
+  "buildNumber": "40101",
   "main": "./main.js",
   "repository": {
     "type": "git",
