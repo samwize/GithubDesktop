@@ -648,6 +648,7 @@ export class SideBySideDiff extends React.Component<
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div
         className={containerClassName}
+        tabIndex={this.props.renderAllRows ? -1 : undefined}
         onMouseDown={this.onMouseDown}
         onKeyDown={this.onKeyDown}
       >
@@ -1259,11 +1260,15 @@ export class SideBySideDiff extends React.Component<
    * not being selected.
    */
   private onMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!this.props.showSideBySideDiff) {
+    if (!(event.target instanceof HTMLElement)) {
       return
     }
 
-    if (!(event.target instanceof HTMLElement)) {
+    if (this.props.renderAllRows && event.target.closest('.content') !== null) {
+      event.currentTarget.focus({ preventScroll: true })
+    }
+
+    if (!this.props.showSideBySideDiff) {
       return
     }
 
