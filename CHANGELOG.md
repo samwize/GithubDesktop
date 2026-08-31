@@ -1,5 +1,11 @@
 # GitPub changelog
 
+## 4.1.1 (Build 40101)
+
+### Fixed
+
+- Let users select and copy text from continuous branch comparison diffs.
+
 ## 4.1.0 (Build 40100)
 
 ### New

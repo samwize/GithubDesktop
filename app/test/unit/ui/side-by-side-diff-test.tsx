@@ -17,7 +17,7 @@ import {
   CommittedFileChange,
 } from '../../../src/models/status'
 import { SideBySideDiff } from '../../../src/ui/diff/side-by-side-diff'
-import { render, screen } from '../../helpers/ui/render'
+import { fireEvent, render, screen } from '../../helpers/ui/render'
 
 const createTextDiff = (text: string): ITextDiff => ({
   kind: DiffType.Text,
@@ -69,6 +69,21 @@ const renderDiff = (
 )
 
 describe('side-by-side diff', () => {
+  it('focuses a continuous diff when selecting its text', () => {
+    render(renderDiff(createFile('src/one.ts'), true))
+
+    const container = document.querySelector('.side-by-side-diff-container')
+    const content = document.querySelector('.content')
+
+    assert.ok(container instanceof HTMLElement)
+    assert.ok(content instanceof HTMLElement)
+    assert.equal(container.getAttribute('tabindex'), '-1')
+
+    fireEvent.mouseDown(content)
+
+    assert.equal(document.activeElement, container)
+  })
+
   it('opens Find for only the active diff in a continuous document', () => {
     render(
       <>
