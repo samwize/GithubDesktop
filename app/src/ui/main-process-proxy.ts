@@ -75,10 +75,7 @@ export const sendReady = sendProxy('renderer-ready', 1)
 
 export const createNewWindow = sendProxy('create-new-window', 0)
 
-export const setSelectedRepositoryPath = sendProxy(
-  'selected-repository-path-changed',
-  1
-)
+export const setSelectedRepository = sendProxy('selected-repository-changed', 1)
 
 export const notifyRepositoriesStoreChanged = sendProxy(
   'repositories-store-changed',

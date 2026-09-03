@@ -27,6 +27,11 @@ export interface IRepositoryIndicatorUpdate {
   } | null
 }
 
+export interface IWindowRepositorySelection {
+  readonly repositoryID: number | null
+  readonly path: string
+}
+
 /**
  * Defines the simplex IPC channel names we use from the renderer
  * process along with their signatures. This type is used from both
@@ -101,7 +106,9 @@ export type RequestChannels = {
   'create-new-window': () => void
   'background-services-active': (active: boolean) => void
   'application-focus-changed': (focused: boolean) => void
-  'selected-repository-path-changed': (path: string | null) => void
+  'selected-repository-changed': (
+    selection: IWindowRepositorySelection | null
+  ) => void
   'active-repository-paths-changed': (paths: ReadonlyArray<string>) => void
   'repositories-store-changed': () => void
   'reload-repositories': () => void

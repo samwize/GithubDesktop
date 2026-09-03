@@ -56,7 +56,10 @@ import {
 } from './notifications'
 import parseCommandLineArgs from 'minimist'
 import { CLIAction } from '../lib/cli-action'
-import { IRepositoryIndicatorUpdate } from '../lib/ipc-shared'
+import {
+  IRepositoryIndicatorUpdate,
+  IWindowRepositorySelection,
+} from '../lib/ipc-shared'
 import { pathExists } from '../lib/path-exists'
 import * as keytar from 'keytar'
 import { TokenStore } from './token-store'
@@ -73,7 +76,10 @@ app.setAppLogsPath()
 enableSourceMaps()
 
 const windows = new Map<number, AppWindow>()
-const selectedRepositoryPaths = new Map<number, string | null>()
+const selectedRepositories = new Map<
+  number,
+  IWindowRepositorySelection | null
+>()
 const windowStateFiles = new Map<number, string>()
 const repositoryIndicators = new Map<number, IRepositoryIndicatorUpdate>()
 let mainWindow: AppWindow | null = null
@@ -241,10 +247,10 @@ function sendAppMenuToAllWindows() {
 function getActiveWindowRepositoryStates() {
   const states = new Array<IWindowRepositoryState>()
 
-  for (const [windowID, path] of selectedRepositoryPaths) {
+  for (const [windowID, selection] of selectedRepositories) {
     const windowStateFile = windowStateFiles.get(windowID)
-    if (path !== null && windowStateFile !== undefined) {
-      states.push({ path, windowStateFile })
+    if (selection !== null && windowStateFile !== undefined) {
+      states.push({ ...selection, windowStateFile })
     }
   }
 
@@ -252,9 +258,11 @@ function getActiveWindowRepositoryStates() {
 }
 
 function getActiveRepositoryPaths() {
-  return Array.from(selectedRepositoryPaths.values()).filter(
-    (path): path is string => path !== null
-  )
+  return Array.from(selectedRepositories.values())
+    .filter(
+      (selection): selection is IWindowRepositorySelection => selection !== null
+    )
+    .map(selection => selection.path)
 }
 
 function sendOwnerState() {
@@ -509,7 +517,7 @@ app.on('ready', async () => {
     createWindow()
   } else {
     for (const state of restoredWindowRepositoryStates) {
-      createWindow(state.path, state.windowStateFile)
+      createWindow(state, state.windowStateFile)
     }
   }
 
@@ -539,15 +547,20 @@ app.on('ready', async () => {
 
   ipcMain.on('update-accounts', (_, accounts) => updateAccounts(accounts))
 
-  ipcMain.on('create-new-window', () => createWindow())
+  ipcMain.on('create-new-window', event => {
+    const source = getWindowForSender(event.sender)
+    createWindow(
+      source === undefined ? null : selectedRepositories.get(source.id) ?? null
+    )
+  })
 
-  ipcMain.on('selected-repository-path-changed', (event, path) => {
+  ipcMain.on('selected-repository-changed', (event, selection) => {
     const window = getWindowForSender(event.sender)
     if (window === undefined) {
       return
     }
 
-    selectedRepositoryPaths.set(window.id, path)
+    selectedRepositories.set(window.id, selection)
     writeWindowRepositoryStates(
       app.getPath('userData'),
       getActiveWindowRepositoryStates()
@@ -838,7 +851,7 @@ app.on('ready', async () => {
 
   ipcMain.handle('get-other-window-repository-paths', async event =>
     getOtherWindowRepositoryPaths(
-      selectedRepositoryPaths,
+      selectedRepositories,
       getWindowForSender(event.sender)?.id
     )
   )
@@ -1065,7 +1078,7 @@ app.on(
 let installedDevTools = false
 
 function createWindow(
-  initialRepositoryPath: string | null = null,
+  initialRepository: IWindowRepositorySelection | null = null,
   restoredWindowStateFile?: string
 ) {
   const windowStateFile =
@@ -1076,10 +1089,10 @@ function createWindow(
   const window = new AppWindow(
     windowStateFile,
     () => windows.size === 1,
-    initialRepositoryPath
+    initialRepository
   )
   windows.set(window.id, window)
-  selectedRepositoryPaths.set(window.id, initialRepositoryPath)
+  selectedRepositories.set(window.id, initialRepository)
   windowStateFiles.set(window.id, windowStateFile)
   mainWindow = window
 
@@ -1109,7 +1122,7 @@ function createWindow(
   window.onClosed(() => {
     const wasBackgroundServicesOwner = backgroundServicesOwnerID === window.id
     windows.delete(window.id)
-    selectedRepositoryPaths.delete(window.id)
+    selectedRepositories.delete(window.id)
     windowStateFiles.delete(window.id)
     if (!isQuitting) {
       writeWindowRepositoryStates(

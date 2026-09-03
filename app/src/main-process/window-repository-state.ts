@@ -1,12 +1,12 @@
 import { randomBytes } from 'crypto'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { IWindowRepositorySelection } from '../lib/ipc-shared'
 
 const FileName = 'window-repositories.json'
 export const DefaultWindowStateFileName = 'window-state.json'
 
-export interface IWindowRepositoryState {
-  readonly path: string
+export interface IWindowRepositoryState extends IWindowRepositorySelection {
   readonly windowStateFile: string
 }
 
@@ -22,14 +22,14 @@ function isWindowStateFileName(value: unknown): value is string {
 }
 
 export function getOtherWindowRepositoryPaths(
-  selectedRepositoryPaths: ReadonlyMap<number, string | null>,
+  selectedRepositories: ReadonlyMap<number, IWindowRepositorySelection | null>,
   currentWindowID: number | undefined
 ): ReadonlyArray<string> {
   const paths = new Array<string>()
 
-  for (const [windowID, path] of selectedRepositoryPaths) {
-    if (path !== null && windowID !== currentWindowID) {
-      paths.push(path)
+  for (const [windowID, selection] of selectedRepositories) {
+    if (selection !== null && windowID !== currentWindowID) {
+      paths.push(selection.path)
     }
   }
 
@@ -69,6 +69,13 @@ export function readWindowRepositoryStates(
         isWindowStateFileName(entry.windowStateFile)
           ? entry.windowStateFile
           : undefined
+      const repositoryID =
+        typeof entry === 'object' &&
+        entry !== null &&
+        'repositoryID' in entry &&
+        typeof entry.repositoryID === 'number'
+          ? entry.repositoryID
+          : null
 
       const windowStateFile =
         storedWindowStateFile !== undefined &&
@@ -80,7 +87,7 @@ export function readWindowRepositoryStates(
           : createWindowStateFileName()
 
       usedWindowStateFiles.add(windowStateFile)
-      states.push({ path, windowStateFile })
+      states.push({ path, windowStateFile, repositoryID })
     }
 
     return states
