@@ -2409,6 +2409,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.accounts = accounts
     this.repositories = repositories
 
+    await this.migrateInitialRepositoryAnchor(initialRepositorySelection)
+
     const initialRepository = await this.resolveInitialRepository(
       initialRepositorySelection
     )
@@ -2956,6 +2958,62 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
+  private async migrateInitialRepositoryAnchor(
+    selection: IWindowRepositorySelection | null
+  ): Promise<void> {
+    if (selection === null) {
+      return
+    }
+
+    const repository =
+      (selection.repositoryID === null
+        ? undefined
+        : this.repositories.find(r => r.id === selection.repositoryID)) ??
+      this.repositories.find(
+        r =>
+          this.normalizeRepositoryPath(r.path) ===
+          this.normalizeRepositoryPath(selection.path)
+      )
+    if (repository === undefined) {
+      return
+    }
+
+    const type = await getRepositoryType(repository.path).catch(() => null)
+    if (type?.kind !== 'regular') {
+      return
+    }
+
+    const worktrees = await listWorktrees(repository).catch(() => [])
+    const main = worktrees.find(worktree => worktree.type === 'main')
+    if (
+      main === undefined ||
+      this.normalizeRepositoryPath(main.path) ===
+        this.normalizeRepositoryPath(repository.path) ||
+      this.repositories.some(
+        candidate =>
+          candidate.id !== repository.id &&
+          this.normalizeRepositoryPath(candidate.path) ===
+            this.normalizeRepositoryPath(main.path)
+      )
+    ) {
+      return
+    }
+
+    const mainType = await getRepositoryType(main.path).catch(() => null)
+    if (mainType?.kind !== 'regular') {
+      return
+    }
+
+    const anchor = await this.repositoriesStore.updateRepositoryPath(
+      repository,
+      mainType.topLevelWorkingDirectory,
+      mainType.gitDir
+    )
+    this.repositories = this.repositories.map(candidate =>
+      candidate.id === anchor.id ? anchor : candidate
+    )
+  }
+
   private async resolveInitialRepository(
     selection: IWindowRepositorySelection | null
   ): Promise<Repository | null> {
@@ -2985,6 +3043,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
       log.error('Could not restore selected worktree', e)
       return { kind: 'missing' } as RepositoryType
     })
+    if (type.kind === 'unsafe') {
+      return repositoryAtPath(repository, selection.path, true, undefined)
+    }
     if (type.kind !== 'regular') {
       return repository
     }
@@ -4007,10 +4068,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (foundRepository) {
       let recovered = await this._updateRepositoryMissing(repository, false)
       if (type.kind === 'regular' && recovered.gitDir !== type.gitDir) {
-        recovered = await this.repositoriesStore.updateRepositoryGitDir(
-          recovered,
-          type.gitDir
-        )
+        recovered = await this.updateRepositoryGitDir(recovered, type.gitDir)
       }
       return recovered
     }
@@ -4102,10 +4160,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (repository.gitDir === undefined) {
       const type = await getRepositoryType(repository.path)
       if (type.kind === 'regular') {
-        repository = await this.repositoriesStore.updateRepositoryGitDir(
-          repository,
-          type.gitDir
-        )
+        repository = await this.updateRepositoryGitDir(repository, type.gitDir)
       }
     }
 
@@ -6264,6 +6319,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     worktreePath: string,
     force?: boolean
   ): Promise<void> {
+    await this.assertWorktreeNotActiveInOtherWindow(worktreePath, 'remove')
+
     const isDeletingCurrentWorktree = repository.path === worktreePath
     let originalWorktree: WorktreeEntry | null = null
 
@@ -6476,6 +6533,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     worktreePath: string,
     newPath: string
   ): Promise<void> {
+    await this.assertWorktreeNotActiveInOtherWindow(worktreePath, 'rename')
+
     await moveWorktree(repository, worktreePath, newPath)
 
     // If the worktree being renamed is the currently selected one, switch to
@@ -8313,7 +8372,87 @@ export class AppStore extends TypedBaseStore<IAppState> {
     repository: Repository,
     missing: boolean
   ): Promise<Repository> {
+    if (this.isWindowScopedRepository(repository)) {
+      return Promise.resolve(
+        this.updateWindowScopedRepository(
+          repository,
+          repositoryAtPath(
+            repository,
+            repository.path,
+            missing,
+            repository.gitDir
+          )
+        )
+      )
+    }
+
     return this.repositoriesStore.updateRepositoryMissing(repository, missing)
+  }
+
+  private async updateRepositoryGitDir(
+    repository: Repository,
+    gitDir: string
+  ): Promise<Repository> {
+    if (this.isWindowScopedRepository(repository)) {
+      return this.updateWindowScopedRepository(
+        repository,
+        repositoryAtPath(
+          repository,
+          repository.path,
+          repository.missing,
+          gitDir
+        )
+      )
+    }
+
+    return this.repositoriesStore.updateRepositoryGitDir(repository, gitDir)
+  }
+
+  private isWindowScopedRepository(repository: Repository): boolean {
+    const registeredRepository = this.repositories.find(
+      candidate => candidate.id === repository.id
+    )
+
+    return (
+      registeredRepository !== undefined &&
+      this.normalizeRepositoryPath(registeredRepository.path) !==
+        this.normalizeRepositoryPath(repository.path)
+    )
+  }
+
+  private updateWindowScopedRepository(
+    repository: Repository,
+    updatedRepository: Repository
+  ): Repository {
+    if (
+      this.selectedRepository instanceof Repository &&
+      this.selectedRepository.id === repository.id &&
+      this.normalizeRepositoryPath(this.selectedRepository.path) ===
+        this.normalizeRepositoryPath(repository.path)
+    ) {
+      this.selectedRepository = updatedRepository
+      this.emitUpdate()
+    }
+
+    return updatedRepository
+  }
+
+  private async assertWorktreeNotActiveInOtherWindow(
+    worktreePath: string,
+    action: 'remove' | 'rename'
+  ): Promise<void> {
+    const otherWindowPaths = await getOtherWindowRepositoryPaths()
+    if (
+      otherWindowPaths.some(
+        path =>
+          this.normalizeRepositoryPath(path) ===
+          this.normalizeRepositoryPath(worktreePath)
+      )
+    ) {
+      throw new Error(
+        `Can't ${action} the worktree at '${worktreePath}' because it is open in another window.`
+      )
+    }
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
@@ -8448,21 +8587,32 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     const rt = await getRepositoryType(path)
 
-    if (rt.kind === 'regular') {
-      await this.repositoriesStore.updateRepositoryPath(
-        repository,
-        rt.topLevelWorkingDirectory,
-        rt.gitDir
-      )
-    } else if (rt.kind === 'unsafe') {
-      await this.repositoriesStore.updateRepositoryPath(
-        repository,
-        path,
-        undefined,
-        true
-      )
-    } else {
+    if (rt.kind !== 'regular' && rt.kind !== 'unsafe') {
       this.emitError(new Error(this.getInvalidRepoPathsMessage([path])))
+      return
+    }
+
+    const relocatedPath =
+      rt.kind === 'regular' ? rt.topLevelWorkingDirectory : path
+    const gitDir = rt.kind === 'regular' ? rt.gitDir : undefined
+    const missing = rt.kind === 'unsafe'
+
+    if (this.isWindowScopedRepository(repository)) {
+      const relocatedRepository = repositoryAtPath(
+        repository,
+        relocatedPath,
+        missing,
+        gitDir
+      )
+      this.repositoryStateCache.transferState(repository, relocatedRepository)
+      await this._selectRepository(relocatedRepository)
+    } else {
+      await this.repositoriesStore.updateRepositoryPath(
+        repository,
+        relocatedPath,
+        gitDir,
+        missing
+      )
     }
   }
 

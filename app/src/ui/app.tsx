@@ -334,7 +334,8 @@ export class App extends React.Component<IAppProps, IAppState> {
       const selection = state.selectedState
       const selectedRepository = selection?.repository ?? null
       const windowRepositorySelection =
-        selection?.type === SelectionType.Repository
+        selection?.type === SelectionType.Repository ||
+        selection?.type === SelectionType.MissingRepository
           ? {
               repositoryID: selection.repository.id,
               path: selection.repository.path,
