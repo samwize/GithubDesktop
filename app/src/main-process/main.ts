@@ -508,7 +508,9 @@ app.on('ready', async () => {
   const restoredWindowRepositoryStates = (
     await Promise.all(
       storedWindowRepositoryStates.map(async state =>
-        (await pathExists(state.path)) ? state : null
+        state.repositoryID !== null || (await pathExists(state.path))
+          ? state
+          : null
       )
     )
   ).filter((state): state is IWindowRepositoryState => state !== null)

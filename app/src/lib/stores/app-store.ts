@@ -2409,8 +2409,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.accounts = accounts
     this.repositories = repositories
 
-    await this.migrateInitialRepositoryAnchor(initialRepositorySelection)
-
     const initialRepository = await this.resolveInitialRepository(
       initialRepositorySelection
     )
@@ -2958,62 +2956,6 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
-  private async migrateInitialRepositoryAnchor(
-    selection: IWindowRepositorySelection | null
-  ): Promise<void> {
-    if (selection === null) {
-      return
-    }
-
-    const repository =
-      (selection.repositoryID === null
-        ? undefined
-        : this.repositories.find(r => r.id === selection.repositoryID)) ??
-      this.repositories.find(
-        r =>
-          this.normalizeRepositoryPath(r.path) ===
-          this.normalizeRepositoryPath(selection.path)
-      )
-    if (repository === undefined) {
-      return
-    }
-
-    const type = await getRepositoryType(repository.path).catch(() => null)
-    if (type?.kind !== 'regular') {
-      return
-    }
-
-    const worktrees = await listWorktrees(repository).catch(() => [])
-    const main = worktrees.find(worktree => worktree.type === 'main')
-    if (
-      main === undefined ||
-      this.normalizeRepositoryPath(main.path) ===
-        this.normalizeRepositoryPath(repository.path) ||
-      this.repositories.some(
-        candidate =>
-          candidate.id !== repository.id &&
-          this.normalizeRepositoryPath(candidate.path) ===
-            this.normalizeRepositoryPath(main.path)
-      )
-    ) {
-      return
-    }
-
-    const mainType = await getRepositoryType(main.path).catch(() => null)
-    if (mainType?.kind !== 'regular') {
-      return
-    }
-
-    const anchor = await this.repositoriesStore.updateRepositoryPath(
-      repository,
-      mainType.topLevelWorkingDirectory,
-      mainType.gitDir
-    )
-    this.repositories = this.repositories.map(candidate =>
-      candidate.id === anchor.id ? anchor : candidate
-    )
-  }
-
   private async resolveInitialRepository(
     selection: IWindowRepositorySelection | null
   ): Promise<Repository | null> {
@@ -3031,12 +2973,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
           this.normalizeRepositoryPath(selection.path)
       )
 
+    if (repository === undefined) {
+      return null
+    }
     if (
-      repository === undefined ||
       this.normalizeRepositoryPath(repository.path) ===
-        this.normalizeRepositoryPath(selection.path)
+      this.normalizeRepositoryPath(selection.path)
     ) {
-      return repository ?? null
+      return repository
     }
 
     const type = await getRepositoryType(selection.path).catch(e => {
@@ -3044,6 +2988,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
       return { kind: 'missing' } as RepositoryType
     })
     if (type.kind === 'unsafe') {
+      return repositoryAtPath(repository, selection.path, true, undefined)
+    }
+    if (type.kind === 'missing') {
       return repositoryAtPath(repository, selection.path, true, undefined)
     }
     if (type.kind !== 'regular') {
@@ -3062,7 +3009,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
         this.normalizeRepositoryPath(repository.path)
     )
 
-    return containsRegisteredRepository
+    return containsRegisteredRepository || !(await pathExists(repository.path))
       ? repositoryAtPath(
           repository,
           type.topLevelWorkingDirectory,
@@ -8368,22 +8315,30 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
-  public _updateRepositoryMissing(
+  public async _updateRepositoryMissing(
     repository: Repository,
     missing: boolean
   ): Promise<Repository> {
     if (this.isWindowScopedRepository(repository)) {
-      return Promise.resolve(
-        this.updateWindowScopedRepository(
-          repository,
-          repositoryAtPath(
-            repository,
-            repository.path,
-            missing,
-            repository.gitDir
-          )
-        )
+      const updatedRepository = repositoryAtPath(
+        repository,
+        repository.path,
+        missing,
+        repository.gitDir
       )
+      if (
+        missing &&
+        this.selectedRepository instanceof Repository &&
+        this.selectedRepository.id === repository.id &&
+        this.normalizeRepositoryPath(this.selectedRepository.path) ===
+          this.normalizeRepositoryPath(repository.path)
+      ) {
+        await this._selectRepository(updatedRepository)
+      } else {
+        this.updateWindowScopedRepository(repository, updatedRepository)
+      }
+
+      return updatedRepository
     }
 
     return this.repositoriesStore.updateRepositoryMissing(repository, missing)
@@ -8598,13 +8553,17 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const missing = rt.kind === 'unsafe'
 
     if (this.isWindowScopedRepository(repository)) {
-      const relocatedRepository = repositoryAtPath(
-        repository,
-        relocatedPath,
-        missing,
-        gitDir
+      const existingRepository = this.repositories.find(
+        candidate =>
+          this.normalizeRepositoryPath(candidate.path) ===
+          this.normalizeRepositoryPath(relocatedPath)
       )
-      this.repositoryStateCache.transferState(repository, relocatedRepository)
+      const relocatedRepository =
+        existingRepository ??
+        repositoryAtPath(repository, relocatedPath, missing, gitDir)
+      if (existingRepository === undefined) {
+        this.repositoryStateCache.transferState(repository, relocatedRepository)
+      }
       await this._selectRepository(relocatedRepository)
     } else {
       await this.repositoriesStore.updateRepositoryPath(
