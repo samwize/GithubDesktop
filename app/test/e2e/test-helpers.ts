@@ -13,8 +13,14 @@ export const smokeRepoName = path.basename(smokeRepoPath)
 export const smokeRepoFileName = 'smoke-change.txt'
 export const smokeRepoFileContents =
   'This file should appear in the changes list.'
+export const smokeWorktreeName = 'github-desktop-e2e-linked-worktree'
+export const smokeWorktreePath = path.join(
+  fs.realpathSync(os.tmpdir()),
+  smokeWorktreeName
+)
 
 export function ensureSmokeTestRepository() {
+  fs.rmSync(smokeWorktreePath, { recursive: true, force: true })
   fs.rmSync(smokeRepoPath, { recursive: true, force: true })
   fs.mkdirSync(smokeRepoPath, { recursive: true })
 
@@ -61,4 +67,13 @@ export function getSmokeRepoHeadMessage() {
 
 export function getSmokeRepoCurrentBranch() {
   return readGitOutput(['branch', '--show-current'], smokeRepoPath)
+}
+
+export function removeSmokeTestWorktree() {
+  if (!fs.existsSync(smokeWorktreePath)) {
+    return
+  }
+
+  runGit(['worktree', 'remove', '--force', smokeWorktreePath], smokeRepoPath)
+  runGit(['branch', '--delete', '--force', smokeWorktreeName], smokeRepoPath)
 }

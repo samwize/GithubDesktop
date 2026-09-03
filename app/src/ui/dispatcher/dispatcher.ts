@@ -50,6 +50,7 @@ import {
 } from '../../lib/repository-matching'
 import { Shell } from '../../lib/shells'
 import { ILaunchStats, StatsStore } from '../../lib/stats'
+import { IWindowRepositorySelection } from '../../lib/ipc-shared'
 import { AppStore } from '../../lib/stores/app-store'
 import type {
   CopilotFeature,
@@ -168,8 +169,10 @@ export class Dispatcher {
   }
 
   /** Load the initial state for the app. */
-  public loadInitialState(initialRepositoryPath: string | null): Promise<void> {
-    return this.appStore.loadInitialState(initialRepositoryPath)
+  public loadInitialState(
+    initialRepository: IWindowRepositorySelection | null
+  ): Promise<void> {
+    return this.appStore.loadInitialState(initialRepository)
   }
 
   /**

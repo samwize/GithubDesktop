@@ -25,6 +25,7 @@ import * as ipcWebContents from './ipc-webcontents'
 import { addTrustedIPCSender } from './trusted-ipc-sender'
 import { getUpdaterGUID } from '../lib/get-updater-guid'
 import { CLIAction } from '../lib/cli-action'
+import { IWindowRepositorySelection } from '../lib/ipc-shared'
 
 export class AppWindow {
   private window: Electron.BrowserWindow
@@ -46,7 +47,7 @@ export class AppWindow {
   public constructor(
     windowStateFile: string,
     private readonly shouldHideOnClose: () => boolean,
-    private readonly initialRepositoryPath: string | null
+    private readonly initialRepository: IWindowRepositorySelection | null
   ) {
     const savedWindowState = windowStateKeeper({
       defaultWidth: this.minWidth,
@@ -202,8 +203,14 @@ export class AppWindow {
     // have an IPC round trip to get that information from the main process.
     const localeCountryCode = app.getLocaleCountryCode() ?? ''
     const parameters = new URLSearchParams({ lc: localeCountryCode })
-    if (this.initialRepositoryPath !== null) {
-      parameters.set('repository', this.initialRepositoryPath)
+    if (this.initialRepository !== null) {
+      parameters.set('repository', this.initialRepository.path)
+      if (this.initialRepository.repositoryID !== null) {
+        parameters.set(
+          'repositoryID',
+          this.initialRepository.repositoryID.toString()
+        )
+      }
     }
     this.window.loadURL(
       `${encodePathAsUrl(__dirname, 'index.html')}#${parameters.toString()}`

@@ -74,7 +74,7 @@ describe('IPC channel contract', () => {
     'create-new-window',
     'background-services-active',
     'application-focus-changed',
-    'selected-repository-path-changed',
+    'selected-repository-changed',
     'active-repository-paths-changed',
     'repositories-store-changed',
     'reload-repositories',

@@ -67,8 +67,9 @@ import {
   installWindowsCLI,
   uninstallWindowsCLI,
   createNewWindow,
-  setSelectedRepositoryPath,
+  setSelectedRepository,
 } from './main-process-proxy'
+import { IWindowRepositorySelection } from '../lib/ipc-shared'
 import { DiscardChanges } from './discard-changes'
 import { Welcome } from './welcome'
 import { AppMenuBar } from './app-menu'
@@ -273,7 +274,7 @@ export class App extends React.Component<IAppProps, IAppState> {
   private statsIntervalHandle?: number
   private deferredLaunchActionsReady = false
   private backgroundServicesActive = false
-  private selectedRepositoryPath: string | null | undefined
+  private selectedRepositoryKey: string | null | undefined
 
   private repositoryViewRef = React.createRef<RepositoryView>()
 
@@ -297,11 +298,21 @@ export class App extends React.Component<IAppProps, IAppState> {
   public constructor(props: IAppProps) {
     super(props)
 
-    const initialRepositoryPath = new URLSearchParams(
-      window.location.hash.slice(1)
-    ).get('repository')
+    const parameters = new URLSearchParams(window.location.hash.slice(1))
+    const initialRepositoryPath = parameters.get('repository')
+    const initialRepositoryID = Number(parameters.get('repositoryID'))
+    const initialRepository: IWindowRepositorySelection | null =
+      initialRepositoryPath === null
+        ? null
+        : {
+            repositoryID:
+              Number.isInteger(initialRepositoryID) && initialRepositoryID > 0
+                ? initialRepositoryID
+                : null,
+            path: initialRepositoryPath,
+          }
 
-    props.dispatcher.loadInitialState(initialRepositoryPath).then(() => {
+    props.dispatcher.loadInitialState(initialRepository).then(() => {
       this.loading = false
       this.forceUpdate()
 
@@ -322,13 +333,21 @@ export class App extends React.Component<IAppProps, IAppState> {
     props.appStore.onDidUpdate(state => {
       const selection = state.selectedState
       const selectedRepository = selection?.repository ?? null
-      const selectedRepositoryPath =
-        selection?.type === SelectionType.Repository
-          ? selection.repository.path
+      const windowRepositorySelection =
+        selection?.type === SelectionType.Repository ||
+        selection?.type === SelectionType.MissingRepository
+          ? {
+              repositoryID: selection.repository.id,
+              path: selection.repository.path,
+            }
           : null
-      if (this.selectedRepositoryPath !== selectedRepositoryPath) {
-        this.selectedRepositoryPath = selectedRepositoryPath
-        setSelectedRepositoryPath(selectedRepositoryPath)
+      const selectedRepositoryKey =
+        windowRepositorySelection === null
+          ? null
+          : `${windowRepositorySelection.repositoryID}:${windowRepositorySelection.path}`
+      if (this.selectedRepositoryKey !== selectedRepositoryKey) {
+        this.selectedRepositoryKey = selectedRepositoryKey
+        setSelectedRepository(windowRepositorySelection)
       }
 
       const windowTitle =

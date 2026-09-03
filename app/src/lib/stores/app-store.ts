@@ -123,7 +123,14 @@ import {
   notifyConfirmationPreferencesChanged,
   notifyNotificationsSettingsChanged,
 } from '../../ui/main-process-proxy'
-import { IRepositoryIndicatorUpdate } from '../ipc-shared'
+import {
+  IRepositoryIndicatorUpdate,
+  IWindowRepositorySelection,
+} from '../ipc-shared'
+import {
+  reconcileWindowRepository,
+  repositoryAtPath,
+} from '../window-repository-selection'
 import {
   API,
   getAccountForEndpoint,
@@ -1047,8 +1054,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.accountsStore.onDidError(error => this.emitError(error))
 
     this.repositoriesStore.onDidUpdate(updateRepositories => {
+      const previousRepositories = this.repositories
       this.repositories = updateRepositories
-      this.updateRepositorySelectionAfterRepositoriesChanged()
+      this.updateRepositorySelectionAfterRepositoriesChanged(
+        null,
+        previousRepositories
+      )
       this.emitUpdate()
     })
 
@@ -2380,7 +2391,9 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /** Load the initial state for the app. */
-  public async loadInitialState(initialRepositoryPath: string | null) {
+  public async loadInitialState(
+    initialRepositorySelection: IWindowRepositorySelection | null
+  ) {
     const [accounts, repositories] = await Promise.all([
       this.accountsStore.getAll(),
       this.repositoriesStore.getAll(),
@@ -2396,9 +2409,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.accounts = accounts
     this.repositories = repositories
 
-    this.updateRepositorySelectionAfterRepositoriesChanged(
-      initialRepositoryPath
+    const initialRepository = await this.resolveInitialRepository(
+      initialRepositorySelection
     )
+    this.updateRepositorySelectionAfterRepositoriesChanged(initialRepository)
 
     this.sidebarWidth = constrain(
       getNumber(sidebarWidthConfigKey, defaultSidebarWidth)
@@ -2885,26 +2899,38 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   private updateRepositorySelectionAfterRepositoriesChanged(
-    initialRepositoryPath: string | null = null
+    initialRepository: Repository | null = null,
+    previousRepositories: ReadonlyArray<Repository> = this.repositories
   ) {
     const selectedRepository = this.selectedRepository
     let newSelectedRepository: Repository | CloningRepository | null =
       this.selectedRepository
     if (selectedRepository) {
-      const r =
+      const repository =
         this.repositories.find(
           r =>
             r.constructor === selectedRepository.constructor &&
             r.id === selectedRepository.id
         ) || null
+      const previousRepository = previousRepositories.find(
+        r =>
+          r.constructor === selectedRepository.constructor &&
+          r.id === selectedRepository.id
+      )
 
-      newSelectedRepository = r
+      newSelectedRepository =
+        repository !== null && selectedRepository instanceof Repository
+          ? reconcileWindowRepository(
+              selectedRepository,
+              previousRepository,
+              repository
+            )
+          : repository
     }
 
     if (newSelectedRepository === null && this.repositories.length > 0) {
-      if (initialRepositoryPath !== null) {
-        newSelectedRepository =
-          this.repositories.find(r => r.path === initialRepositoryPath) || null
+      if (initialRepository !== null) {
+        newSelectedRepository = initialRepository
       }
 
       const lastSelectedID = getNumber(LastSelectedRepositoryIDKey, 0)
@@ -2928,6 +2954,69 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this._selectRepository(newSelectedRepository)
       this.emitUpdate()
     }
+  }
+
+  private async resolveInitialRepository(
+    selection: IWindowRepositorySelection | null
+  ): Promise<Repository | null> {
+    if (selection === null) {
+      return null
+    }
+
+    const repository =
+      (selection.repositoryID === null
+        ? undefined
+        : this.repositories.find(r => r.id === selection.repositoryID)) ??
+      this.repositories.find(
+        r =>
+          this.normalizeRepositoryPath(r.path) ===
+          this.normalizeRepositoryPath(selection.path)
+      )
+
+    if (repository === undefined) {
+      return null
+    }
+    if (
+      this.normalizeRepositoryPath(repository.path) ===
+      this.normalizeRepositoryPath(selection.path)
+    ) {
+      return repository
+    }
+
+    const type = await getRepositoryType(selection.path).catch(e => {
+      log.error('Could not restore selected worktree', e)
+      return { kind: 'missing' } as RepositoryType
+    })
+    if (type.kind === 'unsafe') {
+      return repositoryAtPath(repository, selection.path, true, undefined)
+    }
+    if (type.kind === 'missing') {
+      return repositoryAtPath(repository, selection.path, true, undefined)
+    }
+    if (type.kind !== 'regular') {
+      return repository
+    }
+
+    const worktrees = await listWorktrees(type.topLevelWorkingDirectory).catch(
+      e => {
+        log.error('Could not list worktrees while restoring selection', e)
+        return []
+      }
+    )
+    const containsRegisteredRepository = worktrees.some(
+      worktree =>
+        this.normalizeRepositoryPath(worktree.path) ===
+        this.normalizeRepositoryPath(repository.path)
+    )
+
+    return containsRegisteredRepository || !(await pathExists(repository.path))
+      ? repositoryAtPath(
+          repository,
+          type.topLevelWorkingDirectory,
+          false,
+          type.gitDir
+        )
+      : repository
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
@@ -3926,10 +4015,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (foundRepository) {
       let recovered = await this._updateRepositoryMissing(repository, false)
       if (type.kind === 'regular' && recovered.gitDir !== type.gitDir) {
-        recovered = await this.repositoriesStore.updateRepositoryGitDir(
-          recovered,
-          type.gitDir
-        )
+        recovered = await this.updateRepositoryGitDir(recovered, type.gitDir)
       }
       return recovered
     }
@@ -4021,10 +4107,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (repository.gitDir === undefined) {
       const type = await getRepositoryType(repository.path)
       if (type.kind === 'regular') {
-        repository = await this.repositoriesStore.updateRepositoryGitDir(
-          repository,
-          type.gitDir
-        )
+        repository = await this.updateRepositoryGitDir(repository, type.gitDir)
       }
     }
 
@@ -6143,24 +6226,20 @@ export class AppStore extends TypedBaseStore<IAppState> {
     const missing = type.kind === 'unsafe'
     const gitDir = type.kind === 'regular' ? type.gitDir : undefined
 
-    const result = await this.repositoriesStore.switchWorktree(
-      repository,
-      worktree.path,
-      missing,
-      gitDir
-    )
+    const result =
+      this.repositories.find(
+        candidate =>
+          this.normalizeRepositoryPath(candidate.path) ===
+          this.normalizeRepositoryPath(worktree.path)
+      ) ?? repositoryAtPath(repository, worktree.path, missing, gitDir)
 
-    this.repositoryStateCache.seedFromWorktree(
-      result.repository,
-      repository,
-      worktree
-    )
+    this.repositoryStateCache.seedFromWorktree(result, repository, worktree)
 
-    await this._selectRepository(result.repository)
+    await this._selectRepository(result)
 
     this.statsStore.increment('worktreeSwitchCount')
 
-    return result.repository
+    return result
   }
 
   /** This shouldn't be called directly. See 'Dispatcher'. */
@@ -6187,6 +6266,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     worktreePath: string,
     force?: boolean
   ): Promise<void> {
+    await this.assertWorktreeNotActiveInOtherWindow(worktreePath, 'remove')
+
     const isDeletingCurrentWorktree = repository.path === worktreePath
     let originalWorktree: WorktreeEntry | null = null
 
@@ -6399,25 +6480,29 @@ export class AppStore extends TypedBaseStore<IAppState> {
     worktreePath: string,
     newPath: string
   ): Promise<void> {
+    await this.assertWorktreeNotActiveInOtherWindow(worktreePath, 'rename')
+
     await moveWorktree(repository, worktreePath, newPath)
 
     // If the worktree being renamed is the currently selected one, switch to
     // its new path so that the subsequent refresh (and any further git calls)
     // operate on the renamed directory rather than the now non-existing one.
     if (repository.path === worktreePath) {
-      const result = await this.repositoriesStore.switchWorktree(
+      const result = repositoryAtPath(
         repository,
-        newPath
+        newPath,
+        repository.missing,
+        repository.gitDir
       )
 
       // Renaming changes the repository's path and therefore its hash, which
       // is the key used by the state cache. Carry the existing state over to
       // the new identity so we don't reset the UI (e.g. a typed commit
       // message) just because the worktree was renamed.
-      this.repositoryStateCache.transferState(repository, result.repository)
+      this.repositoryStateCache.transferState(repository, result)
 
-      await this._selectRepository(result.repository)
-      await this._refreshWorktrees(result.repository)
+      await this._selectRepository(result)
+      await this._refreshWorktrees(result)
     } else {
       await this._refreshWorktrees(repository)
     }
@@ -8230,11 +8315,99 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
-  public _updateRepositoryMissing(
+  public async _updateRepositoryMissing(
     repository: Repository,
     missing: boolean
   ): Promise<Repository> {
+    if (this.isWindowScopedRepository(repository)) {
+      const updatedRepository = repositoryAtPath(
+        repository,
+        repository.path,
+        missing,
+        repository.gitDir
+      )
+      if (
+        missing &&
+        this.selectedRepository instanceof Repository &&
+        this.selectedRepository.id === repository.id &&
+        this.normalizeRepositoryPath(this.selectedRepository.path) ===
+          this.normalizeRepositoryPath(repository.path)
+      ) {
+        await this._selectRepository(updatedRepository)
+      } else {
+        this.updateWindowScopedRepository(repository, updatedRepository)
+      }
+
+      return updatedRepository
+    }
+
     return this.repositoriesStore.updateRepositoryMissing(repository, missing)
+  }
+
+  private async updateRepositoryGitDir(
+    repository: Repository,
+    gitDir: string
+  ): Promise<Repository> {
+    if (this.isWindowScopedRepository(repository)) {
+      return this.updateWindowScopedRepository(
+        repository,
+        repositoryAtPath(
+          repository,
+          repository.path,
+          repository.missing,
+          gitDir
+        )
+      )
+    }
+
+    return this.repositoriesStore.updateRepositoryGitDir(repository, gitDir)
+  }
+
+  private isWindowScopedRepository(repository: Repository): boolean {
+    const registeredRepository = this.repositories.find(
+      candidate => candidate.id === repository.id
+    )
+
+    return (
+      registeredRepository !== undefined &&
+      this.normalizeRepositoryPath(registeredRepository.path) !==
+        this.normalizeRepositoryPath(repository.path)
+    )
+  }
+
+  private updateWindowScopedRepository(
+    repository: Repository,
+    updatedRepository: Repository
+  ): Repository {
+    if (
+      this.selectedRepository instanceof Repository &&
+      this.selectedRepository.id === repository.id &&
+      this.normalizeRepositoryPath(this.selectedRepository.path) ===
+        this.normalizeRepositoryPath(repository.path)
+    ) {
+      this.selectedRepository = updatedRepository
+      this.emitUpdate()
+    }
+
+    return updatedRepository
+  }
+
+  private async assertWorktreeNotActiveInOtherWindow(
+    worktreePath: string,
+    action: 'remove' | 'rename'
+  ): Promise<void> {
+    const otherWindowPaths = await getOtherWindowRepositoryPaths()
+    if (
+      otherWindowPaths.some(
+        path =>
+          this.normalizeRepositoryPath(path) ===
+          this.normalizeRepositoryPath(worktreePath)
+      )
+    ) {
+      throw new Error(
+        `Can't ${action} the worktree at '${worktreePath}' because it is open in another window.`
+      )
+    }
   }
 
   /** This shouldn't be called directly. See `Dispatcher`. */
@@ -8369,21 +8542,36 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     const rt = await getRepositoryType(path)
 
-    if (rt.kind === 'regular') {
-      await this.repositoriesStore.updateRepositoryPath(
-        repository,
-        rt.topLevelWorkingDirectory,
-        rt.gitDir
-      )
-    } else if (rt.kind === 'unsafe') {
-      await this.repositoriesStore.updateRepositoryPath(
-        repository,
-        path,
-        undefined,
-        true
-      )
-    } else {
+    if (rt.kind !== 'regular' && rt.kind !== 'unsafe') {
       this.emitError(new Error(this.getInvalidRepoPathsMessage([path])))
+      return
+    }
+
+    const relocatedPath =
+      rt.kind === 'regular' ? rt.topLevelWorkingDirectory : path
+    const gitDir = rt.kind === 'regular' ? rt.gitDir : undefined
+    const missing = rt.kind === 'unsafe'
+
+    if (this.isWindowScopedRepository(repository)) {
+      const existingRepository = this.repositories.find(
+        candidate =>
+          this.normalizeRepositoryPath(candidate.path) ===
+          this.normalizeRepositoryPath(relocatedPath)
+      )
+      const relocatedRepository =
+        existingRepository ??
+        repositoryAtPath(repository, relocatedPath, missing, gitDir)
+      if (existingRepository === undefined) {
+        this.repositoryStateCache.transferState(repository, relocatedRepository)
+      }
+      await this._selectRepository(relocatedRepository)
+    } else {
+      await this.repositoriesStore.updateRepositoryPath(
+        repository,
+        relocatedPath,
+        gitDir,
+        missing
+      )
     }
   }
 

@@ -23,9 +23,14 @@ import {
   getSmokeRepoCurrentBranch,
   getSmokeRepoHeadMessage,
   getSmokeRepoStatus,
+  removeSmokeTestWorktree,
+  smokeWorktreeName,
+  smokeWorktreePath,
 } from './test-helpers'
 import { getVersion } from '../../package-info'
 import type { Locator, Page } from '@playwright/test'
+import path from 'path'
+import { existsSync } from 'fs'
 
 // All tests run sequentially in the same Electron session.
 test.describe.configure({ mode: 'serial' })
@@ -256,6 +261,60 @@ test.describe('GitHub Desktop - App Launch', () => {
       .poll(() => getSmokeRepoCurrentBranch(), { timeout: 15000 })
       .toBe(initialBranch)
     await expect.poll(() => getSmokeRepoStatus(), { timeout: 15000 }).toBe('')
+
+    // ── Window-scoped worktree selection ───────────────────────────
+    const secondWindowPromise = app.waitForEvent('window')
+    await page.evaluate(() => {
+      const { ipcRenderer } = window.require('electron')
+      ipcRenderer.send('create-new-window')
+    })
+    const secondWindow = await secondWindowPromise
+
+    try {
+      await secondWindow.waitForSelector('#desktop-app-container', {
+        state: 'visible',
+        timeout: 15000,
+      })
+      await dismissMoveToApplicationsDialog(secondWindow)
+      await expect(secondWindow.locator('.branch-button button')).toContainText(
+        initialBranch,
+        { timeout: 15000 }
+      )
+
+      await secondWindow.bringToFront()
+      await secondWindow.evaluate(() => {
+        const { ipcRenderer } = window.require('electron')
+        ipcRenderer.emit('menu-event', {}, 'create-worktree')
+      })
+      const addWorktreeDialog = secondWindow.locator('dialog#add-worktree')
+      await addWorktreeDialog.waitFor({ state: 'visible', timeout: 15000 })
+      await addWorktreeDialog
+        .locator('input[placeholder="worktree name"]')
+        .fill(smokeWorktreeName)
+      await addWorktreeDialog
+        .locator('input[placeholder="worktree path"]')
+        .fill(path.dirname(smokeWorktreePath))
+      await addWorktreeDialog
+        .locator('button:has-text("Create Worktree")')
+        .click()
+
+      await addWorktreeDialog.waitFor({ state: 'hidden', timeout: 15000 })
+      await failIfAppErrorDialogIsVisible(secondWindow)
+      await expect
+        .poll(() => existsSync(smokeWorktreePath), { timeout: 15000 })
+        .toBe(true)
+
+      await expect(secondWindow.locator('.branch-button button')).toContainText(
+        smokeWorktreeName,
+        { timeout: 15000 }
+      )
+      await expect(page.locator('.branch-button button')).toContainText(
+        initialBranch
+      )
+    } finally {
+      await secondWindow.close()
+      removeSmokeTestWorktree()
+    }
   })
 })
 

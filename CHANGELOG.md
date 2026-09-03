@@ -5,6 +5,7 @@
 ### Fixed
 
 - Let users select and copy text from continuous branch comparison diffs.
+- Keep each app window on its own selected worktree when switching worktrees.
 
 ## 4.1.0 (Build 40100)
 

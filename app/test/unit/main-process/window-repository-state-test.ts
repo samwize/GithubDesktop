@@ -21,10 +21,10 @@ describe('window repository state', () => {
   })
 
   it('returns repository paths selected by other windows', () => {
-    const paths = new Map<number, string | null>([
-      [1, '/one'],
-      [2, '/two'],
-      [3, '/one'],
+    const paths = new Map([
+      [1, { repositoryID: 1, path: '/one' }],
+      [2, { repositoryID: 2, path: '/two' }],
+      [3, { repositoryID: 1, path: '/one' }],
       [4, null],
     ])
 
@@ -40,9 +40,21 @@ describe('window repository state', () => {
     directory = mkdtempSync(join(tmpdir(), 'window-repositories-'))
 
     const states = [
-      { path: '/one', windowStateFile: 'window-state.json' },
-      { path: '/two', windowStateFile: 'window-state-a1.json' },
-      { path: '/one', windowStateFile: 'window-state-b2.json' },
+      {
+        repositoryID: 1,
+        path: '/one',
+        windowStateFile: 'window-state.json',
+      },
+      {
+        repositoryID: 2,
+        path: '/two',
+        windowStateFile: 'window-state-a1.json',
+      },
+      {
+        repositoryID: 1,
+        path: '/one',
+        windowStateFile: 'window-state-b2.json',
+      },
     ]
 
     writeWindowRepositoryStates(directory, states)
@@ -66,6 +78,10 @@ describe('window repository state', () => {
     )
     assert.equal(states[0].windowStateFile, DefaultWindowStateFileName)
     assert.equal(new Set(states.map(state => state.windowStateFile)).size, 3)
+    assert.deepEqual(
+      states.map(state => state.repositoryID),
+      [null, null, null]
+    )
   })
 
   it('ignores invalid stored values', () => {
